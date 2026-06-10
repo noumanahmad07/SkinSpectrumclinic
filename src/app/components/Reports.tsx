@@ -5,6 +5,7 @@ import {
   Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import ssaLogo from '../../assets/ssa-logo.png';
 
 const dataByRange = {
   today: {
@@ -108,10 +109,175 @@ export default function Reports() {
   const [exportSuccess, setExportSuccess] = useState('');
 
   const currentData = dataByRange[dateRange];
+  const reportTitle = `Business Report - ${dateRange === 'today' ? 'Today' : dateRange === 'week' ? 'This Week' : dateRange === 'month' ? 'This Month' : 'Custom Range'}`;
+  const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  const handleExport = (type: string) => {
-    setExportSuccess(`${type} exported successfully!`);
+  const showExportSuccess = (message: string) => {
+    setExportSuccess(message);
     setTimeout(() => setExportSuccess(''), 3000);
+  };
+
+  const getReportHtml = () => `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${reportTitle}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; padding: 32px; color: #1A1025; font-family: Inter, Arial, sans-serif; background: #fff; }
+          .report { max-width: 920px; margin: 0 auto; border: 1px solid #EDE8E3; border-radius: 18px; overflow: hidden; }
+          .header { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 28px; background: #1A1025; color: #fff; }
+          .brand { display: flex; align-items: center; gap: 16px; }
+          .logo { width: 72px; height: 72px; border-radius: 999px; object-fit: cover; background: #000; }
+          h1, h2, h3, p { margin: 0; }
+          h1 { font-size: 26px; }
+          .subtitle { margin-top: 6px; color: #E8C98A; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px; }
+          .date { text-align: right; color: #EDE8E3; font-size: 14px; }
+          .section { padding: 24px 28px; border-bottom: 1px solid #EDE8E3; }
+          .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+          .kpi { padding: 16px; background: #F8F5F0; border-radius: 12px; }
+          .kpi-label { color: #6B6570; font-size: 12px; margin-bottom: 8px; }
+          .kpi-value { color: #C9A96E; font-size: 20px; font-weight: 900; }
+          table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+          th { padding: 12px; background: #F8F5F0; color: #6B6570; text-align: left; font-size: 12px; text-transform: uppercase; }
+          td { padding: 12px; border-bottom: 1px solid #EDE8E3; font-size: 14px; }
+          .right { text-align: right; }
+          @media print {
+            body { padding: 0; }
+            .report { border: 0; border-radius: 0; max-width: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="report">
+          <header class="header">
+            <div class="brand">
+              <img class="logo" src="${ssaLogo}" alt="Skin Spectrum Aesthetics" />
+              <div>
+                <h1>Skin Spectrum Aesthetics</h1>
+                <p class="subtitle">${reportTitle}</p>
+              </div>
+            </div>
+            <p class="date">${reportDate}</p>
+          </header>
+          <section class="section">
+            <div class="kpis">
+              <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${formatCurrency(currentData.total)}</div></div>
+              <div class="kpi"><div class="kpi-label">Transactions</div><div class="kpi-value">89</div></div>
+              <div class="kpi"><div class="kpi-label">New Clients</div><div class="kpi-value">12</div></div>
+              <div class="kpi"><div class="kpi-label">Avg. Order</div><div class="kpi-value">${formatCurrency(Math.round(currentData.total / 89))}</div></div>
+            </div>
+          </section>
+          <section class="section">
+            <h2>Revenue Trend</h2>
+            <table>
+              <thead><tr><th>Date</th><th class="right">Revenue</th></tr></thead>
+              <tbody>${currentData.revenue.map((row) => `<tr><td>${row.date}</td><td class="right">${formatCurrency(row.revenue)}</td></tr>`).join('')}</tbody>
+            </table>
+          </section>
+          <section class="section">
+            <h2>Sales by Category</h2>
+            <table>
+              <thead><tr><th>Category</th><th class="right">Sales</th></tr></thead>
+              <tbody>${categoryData.map((row) => `<tr><td>${row.category}</td><td class="right">${formatCurrency(row.sales)}</td></tr>`).join('')}</tbody>
+            </table>
+          </section>
+          <section class="section">
+            <h2>Top Products</h2>
+            <table>
+              <thead><tr><th>Product</th><th class="right">Units</th><th class="right">Revenue</th></tr></thead>
+              <tbody>${topProducts.map((row) => `<tr><td>${row.product}</td><td class="right">${row.units}</td><td class="right">${formatCurrency(row.revenue)}</td></tr>`).join('')}</tbody>
+            </table>
+          </section>
+          <section class="section">
+            <h2>Top Clients</h2>
+            <table>
+              <thead><tr><th>Client</th><th class="right">Visits</th><th class="right">Total Spent</th></tr></thead>
+              <tbody>${topClients.map((row) => `<tr><td>${row.client}</td><td class="right">${row.visits}</td><td class="right">${formatCurrency(row.totalSpent)}</td></tr>`).join('')}</tbody>
+            </table>
+          </section>
+        </main>
+      </body>
+    </html>
+  `;
+
+  const handlePdfExport = () => {
+    const frame = document.createElement('iframe');
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    document.body.appendChild(frame);
+
+    const doc = frame.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(getReportHtml());
+    doc.close();
+
+    setTimeout(() => {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+      setTimeout(() => document.body.removeChild(frame), 1000);
+    }, 350);
+    showExportSuccess('PDF report opened for download');
+  };
+
+  const handleExcelExport = () => {
+    const workbookHtml = `
+      <html>
+        <head><meta charset="utf-8" /></head>
+        <body>
+          <h1>${reportTitle}</h1>
+          <p>Generated: ${reportDate}</p>
+          <table border="1">
+            <tr><th colspan="2">Summary</th></tr>
+            <tr><td>Total Revenue</td><td>${currentData.total}</td></tr>
+            <tr><td>Transactions</td><td>89</td></tr>
+            <tr><td>New Clients</td><td>12</td></tr>
+            <tr><td>Average Order</td><td>${Math.round(currentData.total / 89)}</td></tr>
+          </table>
+          <br />
+          <table border="1">
+            <tr><th colspan="2">Revenue Trend</th></tr>
+            <tr><th>Date</th><th>Revenue</th></tr>
+            ${currentData.revenue.map((row) => `<tr><td>${row.date}</td><td>${row.revenue}</td></tr>`).join('')}
+          </table>
+          <br />
+          <table border="1">
+            <tr><th colspan="2">Sales by Category</th></tr>
+            <tr><th>Category</th><th>Sales</th></tr>
+            ${categoryData.map((row) => `<tr><td>${row.category}</td><td>${row.sales}</td></tr>`).join('')}
+          </table>
+          <br />
+          <table border="1">
+            <tr><th colspan="3">Top Products</th></tr>
+            <tr><th>Product</th><th>Units</th><th>Revenue</th></tr>
+            ${topProducts.map((row) => `<tr><td>${row.product}</td><td>${row.units}</td><td>${row.revenue}</td></tr>`).join('')}
+          </table>
+          <br />
+          <table border="1">
+            <tr><th colspan="3">Top Clients</th></tr>
+            <tr><th>Client</th><th>Visits</th><th>Total Spent</th></tr>
+            ${topClients.map((row) => `<tr><td>${row.client}</td><td>${row.visits}</td><td>${row.totalSpent}</td></tr>`).join('')}
+          </table>
+        </body>
+      </html>
+    `;
+    const blob = new Blob([workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `skin-spectrum-report-${dateRange}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showExportSuccess('Excel report downloaded');
   };
 
   return (
@@ -149,14 +315,14 @@ export default function Reports() {
             <option value="custom">Custom Range</option>
           </select>
           <button
-            onClick={() => handleExport('PDF')}
+            onClick={handlePdfExport}
             className="px-3 py-2 md:py-3 bg-white border border-[#EDE8E3] rounded-lg
               hover:bg-[#F8F5F0] transition-colors flex items-center gap-1.5 text-sm">
             <Download size={15} className="text-[#6B6570]" />
             <span className="font-medium text-[#6B6570] hidden sm:inline">PDF</span>
           </button>
           <button
-            onClick={() => handleExport('Excel')}
+            onClick={handleExcelExport}
             className="px-3 py-2 md:py-3 bg-white border border-[#EDE8E3] rounded-lg
               hover:bg-[#F8F5F0] transition-colors flex items-center gap-1.5 text-sm">
             <FileText size={15} className="text-[#6B6570]" />

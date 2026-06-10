@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Activity,
   AlertTriangle,
@@ -8,7 +10,11 @@ import {
   FileText,
   Package,
   TrendingUp,
-  Users
+  Users,
+  X,
+  Phone,
+  Mail,
+  Wallet
 } from 'lucide-react';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -48,9 +54,19 @@ interface StoredClient {
   id: number;
   name: string;
   phone: string;
+  email?: string;
+  skinType?: string;
+  totalSpent?: number;
+  concerns?: string[];
+  allergies?: string;
+  notes?: string;
   followUpDate?: string;
   followUpDays?: number;
+  appointmentDate?: string;
+  appointmentTime?: string;
 }
+
+type AppointmentClient = StoredClient & { appointmentAt: Date };
 
 const CLIENTS_STORAGE_KEY = 'skinspectrum_clients';
 
@@ -73,8 +89,37 @@ const getDueFollowUps = () => {
   });
 };
 
+const getClientAppointments = () => {
+  const savedClients = window.localStorage.getItem(CLIENTS_STORAGE_KEY);
+  const clients: StoredClient[] = savedClients ? JSON.parse(savedClients) : [];
+
+  return clients
+    .filter((client) => client.appointmentDate && client.appointmentTime)
+    .map((client) => ({
+      ...client,
+      appointmentAt: new Date(`${client.appointmentDate}T${client.appointmentTime}`),
+    }))
+    .filter((client) => !Number.isNaN(client.appointmentAt.getTime()))
+    .sort((a, b) => a.appointmentAt.getTime() - b.appointmentAt.getTime());
+};
+
 export default function Dashboard() {
+  const navigate = useNavigate();
   const dueFollowUps = getDueFollowUps();
+  const appointments = getClientAppointments();
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentClient | null>(null);
+  const now = new Date();
+  const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+  const upcomingAppointments = appointments.filter(
+    (client) => client.appointmentAt >= now && client.appointmentAt <= oneHourFromNow
+  );
+  const todayAppointments = appointments.filter(
+    (client) => client.appointmentAt >= todayStart && client.appointmentAt <= todayEnd
+  );
 
   return (
     <div className="space-y-5 md:space-y-7">
@@ -154,6 +199,69 @@ export default function Dashboard() {
           accent="#C9A96E"
         />
       </div>
+
+      {upcomingAppointments.length > 0 && (
+        <section className="rounded-lg border border-[#2ECC8A]/30 bg-[#EEF8F4] p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#2ECC8A] text-white">
+                <CalendarClock size={21} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A1025]">Appointment in the next hour</h3>
+                <p className="mt-1 text-sm text-[#6B6570]">
+                  These clients have appointments coming up within 60 minutes.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
+              {upcomingAppointments.slice(0, 4).map((client) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => setSelectedAppointment(client)}
+                  className="rounded-lg border border-[#2ECC8A]/20 bg-white/85 px-4 py-3 text-left transition-all hover:border-[#2ECC8A] hover:shadow-md">
+                  <div className="font-semibold text-[#1A1025]">{client.name}</div>
+                  <div className="mt-1 text-xs text-[#6B6570]">
+                    Appointment at {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {todayAppointments.length > 0 && (
+        <section className="rounded-lg border border-[#EDE8E3] bg-white p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-[#1A1025]">Today’s appointments</h3>
+              <p className="mt-1 text-sm text-[#6B6570]">
+                {todayAppointments.length} appointment{todayAppointments.length === 1 ? '' : 's'} scheduled today.
+              </p>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F7EFE1] text-[#A67F3F]">
+              <CalendarDays size={19} />
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {todayAppointments.slice(0, 8).map((client) => (
+              <button
+                key={client.id}
+                type="button"
+                onClick={() => setSelectedAppointment(client)}
+                className="rounded-lg border border-[#EDE8E3] bg-[#F8F5F0] px-4 py-3 text-left transition-all hover:border-[#C9A96E] hover:bg-white hover:shadow-md">
+                <div className="font-semibold text-[#1A1025]">{client.name}</div>
+                <div className="mt-1 text-xs text-[#6B6570]">
+                  {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {dueFollowUps.length > 0 && (
         <section className="rounded-lg border border-[#D1AD69]/45 bg-[#FFF8E8] p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
@@ -371,6 +479,122 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {selectedAppointment && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          onClick={() => setSelectedAppointment(null)}>
+          <div
+            className="w-full max-w-xl rounded-t-[24px] bg-white shadow-[0_24px_70px_rgba(26,16,37,0.34)] sm:rounded-[16px]"
+            onClick={(event) => event.stopPropagation()}>
+            <div className="sm:hidden flex justify-center pt-3 pb-1">
+              <div className="h-1 w-10 rounded-full bg-[#EDE8E3]" />
+            </div>
+            <div className="flex items-start justify-between gap-4 border-b border-[#EDE8E3] p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#A67F3F]">Appointment Details</p>
+                <h3 className="mt-1 text-2xl font-bold text-[#1A1025]">{selectedAppointment.name}</h3>
+                <p className="mt-1 text-sm text-[#6B6570]">
+                  {selectedAppointment.appointmentAt.toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedAppointment(null)}
+                className="rounded-lg p-2 text-[#6B6570] transition-colors hover:bg-[#F8F5F0]">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-[#F8F5F0] p-4">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
+                    <Phone size={14} />
+                    Phone
+                  </div>
+                  <div className="font-semibold text-[#1A1025]">{selectedAppointment.phone}</div>
+                </div>
+                <div className="rounded-lg bg-[#F8F5F0] p-4">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
+                    <Wallet size={14} />
+                    Total Spent
+                  </div>
+                  <div className="font-bold text-[#C9A96E]">{formatCurrency(selectedAppointment.totalSpent || 0)}</div>
+                </div>
+              </div>
+
+              {selectedAppointment.email && (
+                <div className="rounded-lg border border-[#EDE8E3] p-4">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
+                    <Mail size={14} />
+                    Email
+                  </div>
+                  <div className="text-sm font-medium text-[#1A1025]">{selectedAppointment.email}</div>
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-[#EDE8E3] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Skin Type</div>
+                  <div className="mt-1 font-semibold text-[#1A1025]">{selectedAppointment.skinType || 'Not set'}</div>
+                </div>
+                <div className="rounded-lg border border-[#EDE8E3] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Follow Up</div>
+                  <div className="mt-1 font-semibold text-[#1A1025]">
+                    {selectedAppointment.followUpDate
+                      ? new Date(selectedAppointment.followUpDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'Not set'}
+                  </div>
+                </div>
+              </div>
+
+              {selectedAppointment.concerns && selectedAppointment.concerns.length > 0 && (
+                <div className="rounded-lg border border-[#EDE8E3] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Skin Concerns</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedAppointment.concerns.map((concern) => (
+                      <span key={concern} className="rounded-full bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#A67F3F]">
+                        {concern}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-[#EDE8E3] p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Allergies</div>
+                <div className="mt-1 text-sm font-medium text-[#1A1025]">{selectedAppointment.allergies || 'None'}</div>
+              </div>
+
+              {selectedAppointment.notes && (
+                <div className="rounded-lg bg-[#F8F5F0] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Notes</div>
+                  <p className="mt-1 text-sm text-[#1A1025]">{selectedAppointment.notes}</p>
+                </div>
+              )}
+
+              <button
+                onClick={() => navigate('/pos', {
+                  state: {
+                    clientName: selectedAppointment.name,
+                    clientPhone: selectedAppointment.phone,
+                    appointmentId: selectedAppointment.id,
+                  },
+                })}
+                className="w-full rounded-lg py-3 font-semibold text-white transition-all hover:opacity-95"
+                style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
+                Go to POS / Save Treatment Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -387,28 +611,32 @@ function KPICard({ title, value, change, icon, trend, accent }: {
   const trendColor = trend === 'up' ? '#2ECC8A' : trend === 'down' ? '#E5445A' : '#6B6570';
 
   return (
-    <div className="group rounded-lg border border-white/80 bg-white/95 p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] transition-all hover:-translate-y-1 hover:shadow-[0_22px_60px_rgba(26,16,37,0.12)] md:p-6"
-      style={{
-        borderTop: `4px solid ${accent}`,
-      }}>
-      <div className="flex items-start justify-between mb-3 md:mb-4">
-        <div
-          className="p-2 md:p-3 rounded-lg text-white shadow-[0_12px_26px_rgba(26,16,37,0.1)]"
-          style={{ background: `linear-gradient(135deg, ${accent} 0%, #F2D794 120%)` }}>
-          {icon}
+    <div
+      className="group relative overflow-hidden rounded-lg border border-white/80 bg-white p-4 shadow-[0_16px_45px_rgba(26,16,37,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(26,16,37,0.12)] md:p-5">
+      <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
+      <div className="absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-[0.08]" style={{ backgroundColor: accent }} />
+
+      <div className="relative flex h-full flex-col gap-5">
+        <div className="flex items-start justify-between gap-3">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-lg text-white shadow-[0_12px_28px_rgba(26,16,37,0.12)]"
+            style={{ background: `linear-gradient(135deg, ${accent} 0%, #F2D794 135%)` }}>
+            {icon}
+          </div>
+          <div className="flex min-w-0 items-center gap-1 rounded-full border border-[#EDE8E3] bg-[#FAF7F1] px-2.5 py-1">
+            {trend === 'up' && <ArrowUpRight size={14} style={{ color: trendColor }} />}
+            <span className="truncate text-xs font-bold" style={{ color: trendColor }}>
+              {change}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-[#FAF7F1] px-2.5 py-1 text-right">
-          {trend === 'up' && <ArrowUpRight size={14} style={{ color: trendColor }} />}
-          <span className="text-xs font-bold" style={{ color: trendColor }}>
-            {change}
-          </span>
-        </div>
-      </div>
-      <div>
-        <h4 className="text-xs md:text-sm text-[#6B6570] mb-1">{title}</h4>
-        <div style={{ fontFamily: 'var(--font-heading)' }}
-          className="text-3xl md:text-4xl font-bold leading-none text-[#1A1025]">
-          {value}
+
+        <div className="min-w-0">
+          <h4 className="mb-2 text-sm font-medium text-[#5F5967]">{title}</h4>
+          <div style={{ fontFamily: 'var(--font-heading)' }}
+            className="truncate text-3xl font-black leading-none text-[#1A1025] md:text-[34px]">
+            {value}
+          </div>
         </div>
       </div>
     </div>

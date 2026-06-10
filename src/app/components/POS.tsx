@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router';
 import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Building2, Printer, Mail, MessageSquare, X, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ssaLogo from '../../assets/ssa-logo.png';
@@ -36,14 +37,19 @@ interface CartItem {
 type PaymentMethod = 'Cash' | 'Card' | 'Transfer' | null;
 
 export default function POS() {
+  const location = useLocation();
+  const routedClient = (location.state as { clientName?: string } | null)?.clientName || null;
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [selectedClient, setSelectedClient] = useState<string | null>(routedClient);
+  const [treatmentName, setTreatmentName] = useState('Treatment / Service');
+  const [treatmentPrice, setTreatmentPrice] = useState('');
   const [discount, setDiscount] = useState('');
   const [includeTax, setIncludeTax] = useState(true);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [mobileView, setMobileView] = useState<'products' | 'cart'>('products');
 
@@ -88,9 +94,7 @@ export default function POS() {
   const discountAmount = discount ? (subtotal * parseFloat(discount)) / 100 : 0;
   const taxAmount = includeTax ? (subtotal - discountAmount) * 0.08 : 0;
   const total = subtotal - discountAmount + taxAmount;
-  const clientName = selectedClient
-    ? ['', 'Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'][parseInt(selectedClient)]
-    : 'Walk-in';
+  const clientName = selectedClient || 'Walk-in';
   const receiptDate = new Date().toLocaleDateString();
 
   const receiptSummary = [
@@ -224,25 +228,55 @@ export default function POS() {
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
-  const processPayment = () => {
-    if (!paymentMethod) {
-      alert('Please select a payment method');
+  const openPaymentModal = () => {
+    if (cart.length === 0) {
+      alert('Please add a product or treatment before saving the bill');
       return;
     }
+    setShowPaymentModal(true);
+  };
+
+  const processPayment = (method: Exclude<PaymentMethod, null>) => {
+    setPaymentMethod(method);
+    setShowPaymentModal(false);
     setShowReceipt(true);
   };
 
   const resetSale = () => {
     setCart([]);
     setSelectedClient(null);
+    setTreatmentName('Treatment / Service');
+    setTreatmentPrice('');
     setDiscount('');
     setShowReceipt(false);
     setShowPrintPreview(false);
+    setShowPaymentModal(false);
     setPaymentMethod(null);
     setMobileView('products');
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const addTreatmentToCart = () => {
+    const price = parseFloat(treatmentPrice);
+    if (!treatmentName.trim() || !price || price <= 0) {
+      alert('Please enter treatment name and price');
+      return;
+    }
+
+    setCart((prev) => [
+      ...prev,
+      {
+        id: -Date.now(),
+        name: treatmentName.trim(),
+        price,
+        quantity: 1,
+      },
+    ]);
+    setTreatmentName('Treatment / Service');
+    setTreatmentPrice('');
+    setMobileView('cart');
+  };
 
   const ProductsPanel = (
     <div className="flex flex-col gap-4 h-full overflow-hidden">
@@ -276,76 +310,148 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Product Grid */}
+      {/* Product Table */}
       <div className="flex-1 bg-white rounded-[14px] p-4 overflow-y-auto"
         style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filteredProducts.map((product) => (
-            <motion.div
-              key={product.id}
-              whileHover={{ scale: product.stock > 0 ? 1.03 : 1 }}
-              className={`relative p-3 md:p-4 rounded-lg border transition-all ${
-                product.stock === 0
-                  ? 'bg-gray-50 border-[#EDE8E3] opacity-60'
-                  : 'bg-white border-[#EDE8E3] hover:border-[#C9A96E] hover:shadow-lg cursor-pointer'
-              }`}
-              onClick={() => addToCart(product)}>
-              <div className="text-3xl md:text-5xl mb-2 md:mb-3 text-center py-3 md:py-5 rounded-lg"
-                style={{ background: 'linear-gradient(135deg, #F8F5F0 0%, #F5ECD7 100%)' }}>
-                {product.image}
-              </div>
-              <h4 className="font-semibold text-[#1A1025] mb-1 text-xs md:text-sm leading-tight">{product.name}</h4>
-              <p className="text-xs text-[#6B6570] mb-2">{product.category}</p>
-              <div className="flex items-center justify-between">
-                <span style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-base md:text-xl font-bold text-[#C9A96E]">
-                  {formatCurrency(product.price)}
-                </span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full hidden sm:inline ${
-                  product.stock === 0
-                    ? 'bg-[#E5445A]/10 text-[#E5445A]'
-                    : product.stock < 20
-                    ? 'bg-[#F0A500]/10 text-[#F0A500]'
-                    : 'bg-[#2ECC8A]/10 text-[#2ECC8A]'
-                }`}>
-                  {product.stock === 0 ? 'OOS' : product.stock < 20 ? 'Low' : 'In Stock'}
-                </span>
-              </div>
-              {product.stock === 0 && (
-                <div className="absolute inset-0 bg-white/80 rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-semibold text-[#E5445A]">Out of Stock</span>
-                </div>
-              )}
-            </motion.div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px]">
+            <thead className="bg-[#F8F5F0]">
+              <tr className="border-b border-[#EDE8E3]">
+                {['Product', 'Category', 'Stock', 'Price', 'Action'].map((heading) => (
+                  <th key={heading} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#6B6570]">
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProducts.map((product, idx) => {
+                const outOfStock = product.stock === 0;
+                const lowStock = product.stock > 0 && product.stock < 20;
+                return (
+                  <tr
+                    key={product.id}
+                    onClick={() => !outOfStock && addToCart(product)}
+                    className={`border-b border-[#EDE8E3]/70 transition-colors ${
+                      outOfStock
+                        ? 'bg-gray-50 opacity-60'
+                        : idx % 2 === 0
+                        ? 'bg-white hover:bg-[#F8F5F0] cursor-pointer'
+                        : 'bg-[#F8F5F0]/35 hover:bg-[#F8F5F0] cursor-pointer'
+                    }`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F8F5F0] text-2xl">
+                          {product.image}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-[#1A1025]">{product.name}</div>
+                          <div className="text-xs text-[#6B6570]">SKU-{String(product.id).padStart(3, '0')}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#6B6570]">{product.category}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        outOfStock
+                          ? 'bg-[#E5445A]/10 text-[#E5445A]'
+                          : lowStock
+                          ? 'bg-[#F0A500]/10 text-[#F0A500]'
+                          : 'bg-[#2ECC8A]/10 text-[#2ECC8A]'
+                      }`}>
+                        {outOfStock ? 'Out of Stock' : lowStock ? `${product.stock} Low` : `${product.stock} In Stock`}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-bold text-[#C9A96E]">{formatCurrency(product.price)}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={outOfStock}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          addToCart(product);
+                        }}
+                        className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                          outOfStock
+                            ? 'cursor-not-allowed bg-[#EDE8E3] text-[#8D8792]'
+                            : 'bg-[#1A1025] text-white hover:bg-[#2D1F3D]'
+                        }`}>
+                        Add
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 
   const CartPanel = (
-    <div className="bg-white rounded-[14px] p-4 md:p-6 flex flex-col h-full"
+    <div className="bg-white rounded-[14px] p-4 flex flex-col h-full overflow-hidden"
       style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-      <div className="mb-4 md:mb-6">
-        <h3 style={{ fontFamily: 'var(--font-heading)' }}
-          className="text-xl md:text-2xl font-bold text-[#1A1025] mb-3 md:mb-4">
-          Current Sale
-        </h3>
+      <div className="mb-3 flex-shrink-0">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 style={{ fontFamily: 'var(--font-heading)' }}
+            className="text-xl font-bold text-[#1A1025]">
+            Current Sale
+          </h3>
+          <span className="rounded-full bg-[#F8F5F0] px-3 py-1 text-xs font-semibold text-[#6B6570]">
+            {cartCount} item{cartCount === 1 ? '' : 's'}
+          </span>
+        </div>
         <select
           value={selectedClient || ''}
           onChange={(e) => setSelectedClient(e.target.value)}
-          className="w-full px-4 py-3 bg-[#F8F5F0] border border-[#EDE8E3] rounded-lg
-            focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent">
+          className="w-full px-3 py-2.5 bg-[#F8F5F0] border border-[#EDE8E3] rounded-lg
+            focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent text-sm">
           <option value="">Walk-in Customer</option>
-          <option value="1">Emma Wilson</option>
-          <option value="2">Sarah Johnson</option>
-          <option value="3">Michael Brown</option>
-          <option value="4">Jessica Davis</option>
+          {selectedClient && !['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'].includes(selectedClient) && (
+            <option value={selectedClient}>{selectedClient}</option>
+          )}
+          <option value="Emma Wilson">Emma Wilson</option>
+          <option value="Sarah Johnson">Sarah Johnson</option>
+          <option value="Michael Brown">Michael Brown</option>
+          <option value="Jessica Davis">Jessica Davis</option>
         </select>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="mb-3 flex-shrink-0 rounded-lg border border-[#EDE8E3] bg-[#F8F5F0] p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#6B6570]">Treatment bill</p>
+          <span className="text-[11px] font-medium text-[#8D8792]">optional</span>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_86px_48px] gap-2">
+          <input
+            type="text"
+            value={treatmentName}
+            onChange={(e) => setTreatmentName(e.target.value)}
+            placeholder="Treatment"
+            className="min-w-0 rounded-lg border border-[#EDE8E3] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]"
+          />
+          <input
+            type="number"
+            value={treatmentPrice}
+            onChange={(e) => setTreatmentPrice(e.target.value)}
+            min="0"
+            step="1"
+            placeholder="PKR"
+            className="min-w-0 rounded-lg border border-[#EDE8E3] bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A96E]"
+          />
+          <button
+            type="button"
+            onClick={addTreatmentToCart}
+            className="rounded-lg bg-[#1A1025] px-2 py-2 text-sm font-semibold text-white transition-all hover:bg-[#2D1F3D]">
+            Add
+          </button>
+        </div>
+      </div>
+
       {/* Cart Items */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-2">
+      <div className="mb-3 flex-shrink-0 space-y-2">
         <AnimatePresence>
           {cart.map((item) => (
             <motion.div
@@ -353,7 +459,7 @@ export default function POS() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="flex items-center gap-2 p-3 bg-[#F8F5F0] rounded-lg">
+              className="flex items-center gap-2 rounded-lg border border-[#EDE8E3] bg-white p-2">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-[#1A1025] text-xs md:text-sm truncate">{item.name}</div>
                 <div className="text-xs text-[#6B6570]">{formatCurrency(item.price)} each</div>
@@ -384,18 +490,18 @@ export default function POS() {
         </AnimatePresence>
 
         {cart.length === 0 && (
-          <div className="text-center py-8 md:py-12">
-            <div className="text-5xl md:text-6xl mb-4">🛒</div>
+          <div className="text-center py-5">
+            <div className="text-4xl mb-3">🛒</div>
             <p className="text-[#6B6570]">Cart is empty</p>
-            <p className="text-sm text-[#6B6570] mt-1">Add products to start a sale</p>
+            <p className="text-sm text-[#6B6570] mt-1">Add products or a treatment to save the bill</p>
           </div>
         )}
       </div>
 
       {/* Totals & Payment */}
       {cart.length > 0 && (
-        <>
-          <div className="space-y-3 mb-4 pb-4 border-b border-[#EDE8E3]">
+        <div className="flex-shrink-0">
+          <div className="space-y-2 mb-3 pb-3 border-b border-[#EDE8E3]">
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -417,7 +523,7 @@ export default function POS() {
                 Tax (8%)
               </label>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <div className="flex justify-between text-[#6B6570] text-sm">
                 <span>Subtotal</span><span>{formatCurrency(subtotal, true)}</span>
               </div>
@@ -435,57 +541,27 @@ export default function POS() {
                 <span style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-bold text-[#1A1025]">
                   Grand Total
                 </span>
-                <span style={{ fontFamily: 'var(--font-heading)' }} className="text-xl md:text-2xl font-bold text-[#C9A96E]">
+                <span style={{ fontFamily: 'var(--font-heading)' }} className="text-xl font-bold text-[#C9A96E]">
                   {formatCurrency(total, true)}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Payment Method Selection */}
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-[#6B6570] uppercase tracking-wider">Payment Method</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(['Cash', 'Card', 'Transfer'] as const).map((method) => {
-                const icons = { Cash: <Banknote size={18} />, Card: <CreditCard size={18} />, Transfer: <Building2 size={18} /> };
-                const selected = paymentMethod === method;
-                return (
-                  <button
-                    key={method}
-                    onClick={() => setPaymentMethod(method)}
-                    className={`px-2 py-2.5 rounded-lg flex flex-col items-center gap-1 transition-all text-xs font-medium border-2 ${
-                      selected
-                        ? 'bg-[#C9A96E] text-white border-[#C9A96E] shadow-lg'
-                        : 'bg-[#F8F5F0] text-[#6B6570] border-transparent hover:border-[#C9A96E] hover:text-[#C9A96E]'
-                    }`}>
-                    {icons[method]}
-                    <span>{method}</span>
-                  </button>
-                );
-              })}
-            </div>
-
+          <div>
             <button
-              onClick={processPayment}
-              disabled={!paymentMethod}
-              className={`w-full py-3.5 rounded-lg font-semibold text-white transition-all
-                ${paymentMethod
-                  ? 'transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl'
-                  : 'opacity-50 cursor-not-allowed'}`}
+              onClick={openPaymentModal}
+              className="w-full py-3 rounded-lg font-semibold text-white transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
               style={{
                 background: 'linear-gradient(135deg, #1A1025 0%, #2D1F3D 100%)',
-                boxShadow: paymentMethod ? '0 4px 16px rgba(26, 16, 37, 0.3)' : 'none'
+                boxShadow: '0 4px 16px rgba(26, 16, 37, 0.3)'
               }}>
-              {paymentMethod ? `Process ${paymentMethod} Payment` : 'Select Payment Method'}
-            </button>
-
-            <button className="w-full py-2.5 border-2 border-[#EDE8E3] rounded-lg font-medium
-              text-[#6B6570] hover:bg-[#F8F5F0] transition-colors text-sm">
-              Save as Invoice
+              Proceed to Bill
             </button>
           </div>
-        </>
+        </div>
       )}
+      </div>
     </div>
   );
 
@@ -536,6 +612,58 @@ export default function POS() {
         </div>
       </div>
 
+      {/* Payment Method Modal */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowPaymentModal(false)}>
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-[16px] bg-white p-6"
+              style={{ boxShadow: '0 20px 60px rgba(26, 16, 37, 0.3)' }}>
+              <div className="mb-5 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-2xl font-bold text-[#1A1025]">Select payment method</h3>
+                  <p className="mt-1 text-sm text-[#6B6570]">
+                    {clientName} · {formatCurrency(total, true)}
+                  </p>
+                </div>
+                <button onClick={() => setShowPaymentModal(false)} className="rounded-lg p-2 hover:bg-[#F8F5F0]">
+                  <X size={20} className="text-[#6B6570]" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {(['Cash', 'Card', 'Transfer'] as const).map((method) => {
+                  const icons = { Cash: <Banknote size={20} />, Card: <CreditCard size={20} />, Transfer: <Building2 size={20} /> };
+                  return (
+                    <button
+                      key={method}
+                      onClick={() => processPayment(method)}
+                      className="flex items-center justify-between rounded-lg border-2 border-[#EDE8E3] bg-[#F8F5F0] px-4 py-4 text-left transition-all hover:border-[#C9A96E] hover:bg-white">
+                      <span className="flex items-center gap-3 font-semibold text-[#1A1025]">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#6B6570]">
+                          {icons[method]}
+                        </span>
+                        {method}
+                      </span>
+                      <span className="text-sm font-semibold text-[#C9A96E]">Use</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Receipt Modal */}
       <AnimatePresence>
         {showReceipt && (
@@ -550,35 +678,81 @@ export default function POS() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-[14px] p-6 md:p-8 max-w-md w-full"
+              className="bg-white rounded-[16px] p-5 md:p-6 max-w-2xl w-full max-h-[92vh] overflow-y-auto"
               style={{ boxShadow: '0 20px 60px rgba(26, 16, 37, 0.3)' }}>
               <button onClick={resetSale} className="absolute top-4 right-4 p-2 hover:bg-[#F8F5F0] rounded-lg">
                 <X size={20} className="text-[#6B6570]" />
               </button>
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 rounded-full flex items-center justify-center"
+              <div className="mb-5 flex items-start gap-4 pr-9">
+                <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full"
                   style={{ background: 'linear-gradient(135deg, #2ECC8A 0%, #26B57A 100%)' }}>
-                  <span className="text-3xl md:text-4xl">✓</span>
+                  <span className="text-3xl">✓</span>
                 </div>
-                <h3 style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-2xl md:text-3xl font-bold text-[#1A1025] mb-2">
-                  Payment Successful!
-                </h3>
-                <p className="text-[#6B6570]">
-                  {paymentMethod} payment received
-                  {selectedClient ? ` from ${clientName}` : ' (Walk-in)'}
-                </p>
+                <div>
+                  <h3 className="text-2xl md:text-3xl font-bold text-[#1A1025]">Bill completed</h3>
+                  <p className="mt-1 text-sm text-[#6B6570]">
+                    {paymentMethod} payment received from {clientName}
+                  </p>
+                </div>
               </div>
 
-              <div className="mb-6 p-4 bg-[#F8F5F0] rounded-lg">
-                <div className="text-center">
-                  <div className="text-sm text-[#6B6570] mb-1">Total Paid</div>
-                  <div style={{ fontFamily: 'var(--font-heading)' }}
-                    className="text-3xl md:text-4xl font-bold text-[#C9A96E]">
-                    {formatCurrency(total, true)}
+              <div className="mb-5 grid grid-cols-2 gap-3 rounded-lg border border-[#EDE8E3] bg-[#F8F5F0] p-4 text-sm md:grid-cols-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Customer</div>
+                  <div className="mt-1 font-bold text-[#1A1025]">{clientName}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Payment</div>
+                  <div className="mt-1 font-bold text-[#1A1025]">{paymentMethod}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Date</div>
+                  <div className="mt-1 font-bold text-[#1A1025]">{receiptDate}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Items</div>
+                  <div className="mt-1 font-bold text-[#1A1025]">{cart.length}</div>
+                </div>
+              </div>
+
+              <div className="mb-5 overflow-hidden rounded-lg border border-[#EDE8E3]">
+                <div className="grid grid-cols-12 bg-[#F8F5F0] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#6B6570]">
+                  <div className="col-span-6">Description</div>
+                  <div className="col-span-2 text-center">Qty</div>
+                  <div className="col-span-2 text-right">Price</div>
+                  <div className="col-span-2 text-right">Total</div>
+                </div>
+                {cart.map((item) => (
+                  <div key={item.id} className="grid grid-cols-12 border-t border-[#EDE8E3] px-4 py-3 text-sm">
+                    <div className="col-span-6 font-semibold text-[#1A1025]">{item.name}</div>
+                    <div className="col-span-2 text-center text-[#6B6570]">{item.quantity}</div>
+                    <div className="col-span-2 text-right text-[#6B6570]">{formatCurrency(item.price)}</div>
+                    <div className="col-span-2 text-right font-bold text-[#1A1025]">{formatCurrency(item.price * item.quantity, true)}</div>
                   </div>
-                  <div className="text-xs text-[#6B6570] mt-2">
-                    {cart.length} item{cart.length !== 1 ? 's' : ''} • {new Date().toLocaleDateString()}
+                ))}
+              </div>
+
+              <div className="mb-6 rounded-lg bg-[#F8F5F0] p-4">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-[#6B6570]">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(subtotal, true)}</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-[#2ECC8A]">
+                      <span>Discount</span>
+                      <span>-{formatCurrency(discountAmount, true)}</span>
+                    </div>
+                  )}
+                  {includeTax && (
+                    <div className="flex justify-between text-[#6B6570]">
+                      <span>Tax (8%)</span>
+                      <span>{formatCurrency(taxAmount, true)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t-2 border-[#EDE8E3] pt-3 text-xl font-black">
+                    <span className="text-[#1A1025]">Total Paid</span>
+                    <span className="text-[#C9A96E]">{formatCurrency(total, true)}</span>
                   </div>
                 </div>
               </div>

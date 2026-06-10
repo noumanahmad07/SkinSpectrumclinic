@@ -68,6 +68,26 @@ const productCategories = ['Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs'
 
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
+const getStockStatus = (item: Product) => {
+  if (item.stock <= 0) return { label: 'Out of Stock', color: '#E5445A', bg: '#E5445A14' };
+  if (item.stock <= item.minStock) return { label: 'Low Stock', color: '#F0A500', bg: '#F0A50014' };
+  return { label: 'In Stock', color: '#2ECC8A', bg: '#2ECC8A14' };
+};
+
+const getExpiryStatus = (expiry: string) => {
+  if (!expiry) return { label: 'No Expiry', color: '#6B6570', bg: '#6B657014', days: null as number | null };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiryDate = new Date(expiry);
+  expiryDate.setHours(0, 0, 0, 0);
+  const days = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (days < 0) return { label: 'Expired', color: '#E5445A', bg: '#E5445A14', days };
+  if (days <= 30) return { label: 'Near Expiry', color: '#F0A500', bg: '#F0A50014', days };
+  return { label: 'Valid', color: '#2ECC8A', bg: '#2ECC8A14', days };
+};
+
 export default function Inventory() {
   const [inventory, setInventory] = useState<Product[]>(initialInventory);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -86,6 +106,11 @@ export default function Inventory() {
         item.code.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (!filterCategory || item.category === filterCategory)
   );
+  const stockAlerts = inventory.filter((item) => item.stock <= item.minStock);
+  const expiryAlerts = inventory.filter((item) => {
+    const expiryStatus = getExpiryStatus(item.expiry);
+    return expiryStatus.label === 'Expired' || expiryStatus.label === 'Near Expiry';
+  });
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg);
@@ -195,10 +220,63 @@ export default function Inventory() {
         ))}
       </div>
 
+      {(stockAlerts.length > 0 || expiryAlerts.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {stockAlerts.length > 0 && (
+            <div className="rounded-lg border border-[#F0A500]/25 bg-[#FFF8E8] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-[#1A1025]">Stock alerts</h3>
+                  <p className="text-sm text-[#6B6570] mt-1">
+                    {stockAlerts.length} product{stockAlerts.length > 1 ? 's are' : ' is'} at or below minimum stock.
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#F0A500] px-3 py-1 text-xs font-bold text-white">{stockAlerts.length}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {stockAlerts.slice(0, 4).map((item) => (
+                  <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6B6570] border border-[#EDE8E3]">
+                    {item.name}: {item.stock}/{item.minStock}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {expiryAlerts.length > 0 && (
+            <div className="rounded-lg border border-[#E5445A]/20 bg-[#FFF1F3] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-[#1A1025]">Expiry alerts</h3>
+                  <p className="text-sm text-[#6B6570] mt-1">
+                    {expiryAlerts.length} product{expiryAlerts.length > 1 ? 's need' : ' needs'} expiry review.
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#E5445A] px-3 py-1 text-xs font-bold text-white">{expiryAlerts.length}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {expiryAlerts.slice(0, 4).map((item) => {
+                  const expiryStatus = getExpiryStatus(item.expiry);
+                  return (
+                    <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6B6570] border border-[#EDE8E3]">
+                      {item.name}: {expiryStatus.label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Grid View */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
           {filteredInventory.map((item) => (
+            (() => {
+              const stockStatus = getStockStatus(item);
+              const expiryStatus = getExpiryStatus(item.expiry);
+              return (
             <div key={item.id}
               className="bg-white rounded-[14px] p-4 md:p-5 border border-[#EDE8E3] hover:border-[#C9A96E] hover:shadow-lg transition-all"
               style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
@@ -220,6 +298,14 @@ export default function Inventory() {
                 </div>
                 <p style={{ fontFamily: 'var(--font-mono)' }} className="text-xs text-[#6B6570] mb-0.5">{item.code}</p>
                 <p className="text-xs text-[#6B6570]">{item.category}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="px-2 py-1 rounded-full text-[11px] font-semibold" style={{ color: stockStatus.color, backgroundColor: stockStatus.bg }}>
+                    {stockStatus.label}
+                  </span>
+                  <span className="px-2 py-1 rounded-full text-[11px] font-semibold" style={{ color: expiryStatus.color, backgroundColor: expiryStatus.bg }}>
+                    {expiryStatus.label}
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center justify-between mb-3">
@@ -262,6 +348,8 @@ export default function Inventory() {
                 </button>
               </div>
             </div>
+              );
+            })()
           ))}
         </div>
       )}
@@ -274,7 +362,7 @@ export default function Inventory() {
             <table className="w-full min-w-[700px]">
               <thead className="bg-[#F8F5F0] border-b border-[#EDE8E3]">
                 <tr>
-                  {['Code', 'Name', 'Category', 'Cost', 'Sell Price', 'Stock', 'Min', 'Status', 'Actions'].map((h) => (
+                  {['Code', 'Name', 'Category', 'Cost', 'Sell Price', 'Stock', 'Expiry', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="text-left py-3 px-3 text-xs font-semibold text-[#6B6570] uppercase tracking-wider">
                       {h}
                     </th>
@@ -282,7 +370,10 @@ export default function Inventory() {
                 </tr>
               </thead>
               <tbody>
-                {filteredInventory.map((item, idx) => (
+                {filteredInventory.map((item, idx) => {
+                  const stockStatus = getStockStatus(item);
+                  const expiryStatus = getExpiryStatus(item.expiry);
+                  return (
                   <tr key={item.id}
                     className={`border-b border-[#EDE8E3]/50 hover:bg-[#F8F5F0] transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F5F0]/30'}`}>
                     <td className="py-3 px-3">
@@ -307,8 +398,16 @@ export default function Inventory() {
                       }`}>
                         {item.stock}
                       </span>
+                      <div className="text-[11px] font-semibold mt-0.5" style={{ color: stockStatus.color }}>
+                        {stockStatus.label}
+                      </div>
                     </td>
-                    <td className="py-3 px-3 text-sm text-[#6B6570]">{item.minStock}</td>
+                    <td className="py-3 px-3">
+                      <div className="text-sm text-[#1A1025]">{item.expiry || 'None'}</div>
+                      <div className="text-[11px] font-semibold mt-0.5" style={{ color: expiryStatus.color }}>
+                        {expiryStatus.label}
+                      </div>
+                    </td>
                     <td className="py-3 px-3">
                       <button onClick={() => toggleStatus(item.id)}
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -328,7 +427,8 @@ export default function Inventory() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, X, Phone, Mail, Calendar, Wallet, Filter, Edit, CalendarClock } from 'lucide-react';
+import { Search, Plus, X, Phone, Mail, Calendar, Wallet, Filter, Edit, CalendarClock, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
@@ -32,6 +32,8 @@ interface Client {
   notes: string;
   followUpDays?: number;
   followUpDate?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
 }
 
 const initialClients: Client[] = [
@@ -229,73 +231,154 @@ export default function Clients() {
         ))}
       </div>
 
-      {/* Client Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-        {filteredClients.map((client) => (
-          <motion.div
-            key={client.id}
-            whileHover={{ y: -4 }}
-            onClick={() => setSelectedClient(client)}
-            className="bg-white rounded-[14px] p-5 md:p-6 border border-[#EDE8E3] hover:border-[#C9A96E]
-              cursor-pointer transition-all"
-            style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-            <div className="flex items-start gap-4 mb-4">
-              <div
-                className="w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-white text-lg md:text-xl font-bold flex-shrink-0"
-                style={{
-                  background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)`,
-                }}>
-                {client.name.split(' ').map((n) => n[0]).join('')}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-[#1A1025] text-base md:text-lg mb-1 truncate">{client.name}</h3>
-                <span
-                  className="inline-block px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                  style={{ backgroundColor: skinTypeColors[client.skinType] }}>
+      {/* Clients Table */}
+      <div className="bg-white rounded-[14px] overflow-hidden border border-[#EDE8E3]"
+        style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full min-w-[920px]">
+            <thead className="bg-[#F8F5F0] border-b border-[#EDE8E3]">
+              <tr>
+                {['Client', 'Phone', 'Skin Type', 'Appointment', 'Last Visit', 'Total Spent', 'Follow Up', 'Actions'].map((h) => (
+                  <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-[#6B6570] uppercase tracking-wider">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClients.map((client, idx) => (
+                <tr
+                  key={client.id}
+                  className={`border-b border-[#EDE8E3]/60 hover:bg-[#F8F5F0] transition-colors ${
+                    idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F5F0]/30'
+                  }`}>
+                  <td className="py-4 px-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)` }}>
+                        {client.name.split(' ').map((n) => n[0]).join('')}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[#1A1025]">{client.name}</div>
+                        {client.email && (
+                          <div className="flex items-center gap-1.5 text-xs text-[#6B6570] mt-0.5">
+                            <Mail size={12} />
+                            <span className="truncate max-w-[220px]">{client.email}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-4 px-4 text-sm text-[#6B6570] whitespace-nowrap">{client.phone}</td>
+                  <td className="py-4 px-4">
+                    <span
+                      className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+                      style={{ backgroundColor: skinTypeColors[client.skinType] }}>
+                      {client.skinType}
+                    </span>
+                  </td>
+                  <td className="py-4 px-4 text-sm text-[#1A1025] font-medium whitespace-nowrap">
+                    {client.appointmentDate && client.appointmentTime ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF8F4] px-3 py-1 text-xs font-semibold text-[#2A9D6F]">
+                        <Calendar size={12} />
+                        {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
+                        {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    ) : (
+                      <span className="text-[#8D8792]">None</span>
+                    )}
+                  </td>
+                  <td className="py-4 px-4 text-sm text-[#1A1025] font-medium whitespace-nowrap">
+                    {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </td>
+                  <td className="py-4 px-4 text-sm font-bold text-[#C9A96E] whitespace-nowrap">
+                    {formatCurrency(client.totalSpent)}
+                  </td>
+                  <td className="py-4 px-4 text-sm text-[#6B6570] whitespace-nowrap">
+                    {client.followUpDate ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F7EFE1] px-3 py-1 text-xs font-semibold text-[#A67F3F]">
+                        <CalendarClock size={12} />
+                        {new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    ) : (
+                      <span className="text-[#8D8792]">None</span>
+                    )}
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedClient(client)}
+                        className="p-2 rounded-lg bg-[#F8F5F0] text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors"
+                        title="View client">
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        onClick={() => setEditClient(client)}
+                        className="p-2 rounded-lg bg-[#F8F5F0] text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors"
+                        title="Edit client">
+                        <Edit size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="md:hidden divide-y divide-[#EDE8E3]">
+          {filteredClients.map((client) => (
+            <div key={client.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)` }}>
+                    {client.name.split(' ').map((n) => n[0]).join('')}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[#1A1025] truncate">{client.name}</div>
+                    <div className="text-xs text-[#6B6570] truncate">{client.phone}</div>
+                  </div>
+                </div>
+                <span className="px-2 py-1 rounded-full text-xs font-semibold text-white flex-shrink-0" style={{ backgroundColor: skinTypeColors[client.skinType] }}>
                   {client.skinType}
                 </span>
               </div>
-            </div>
-
-            <div className="space-y-1.5 mb-4">
-              <div className="flex items-center gap-2 text-xs md:text-sm text-[#6B6570]">
-                <Phone size={13} />
-                <span className="truncate">{client.phone}</span>
-              </div>
-              {client.email && (
-                <div className="flex items-center gap-2 text-xs md:text-sm text-[#6B6570]">
-                  <Mail size={13} />
-                  <span className="truncate">{client.email}</span>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-[#6B6570]">Appointment</div>
+                  <div className="font-semibold text-[#1A1025]">
+                    {client.appointmentDate && client.appointmentTime
+                      ? new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                      : 'None'}
+                  </div>
                 </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[#EDE8E3]">
-              <div>
-                <div className="flex items-center gap-1 text-xs text-[#6B6570] mb-0.5">
-                  <Calendar size={11} /><span>Last Visit</span>
+                <div>
+                  <div className="text-xs text-[#6B6570]">Last Visit</div>
+                  <div className="font-semibold text-[#1A1025]">{new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                 </div>
-                <div className="text-sm font-semibold text-[#1A1025]">
-                  {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                <div>
+                  <div className="text-xs text-[#6B6570]">Total Spent</div>
+                  <div className="font-bold text-[#C9A96E]">{formatCurrency(client.totalSpent)}</div>
                 </div>
               </div>
-              <div>
-                <div className="flex items-center gap-1 text-xs text-[#6B6570] mb-0.5">
-                  <Wallet size={11} /><span>Total Spent</span>
-                </div>
-                <div style={{ fontFamily: 'var(--font-heading)' }} className="text-sm font-bold text-[#C9A96E]">
-                  {formatCurrency(client.totalSpent)}
-                </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => setSelectedClient(client)}
+                  className="flex-1 py-2 rounded-lg bg-[#F8F5F0] text-sm font-semibold text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors">
+                  View
+                </button>
+                <button
+                  onClick={() => setEditClient(client)}
+                  className="flex-1 py-2 rounded-lg bg-[#F8F5F0] text-sm font-semibold text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors">
+                  Edit
+                </button>
               </div>
             </div>
-            {client.followUpDate && (
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-[#F7EFE1] px-3 py-2 text-xs font-semibold text-[#A67F3F]">
-                <CalendarClock size={13} />
-                Follow up {new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </div>
-            )}
-          </motion.div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {filteredClients.length === 0 && (
@@ -417,6 +500,28 @@ function ClientDetailPanel({ client, onClose, onEdit }: {
           </div>
         </div>
 
+        {client.appointmentDate && client.appointmentTime && (
+          <div className="p-4 bg-[#EEF8F4] rounded-lg border border-[#2ECC8A]/20">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#1A1025]">
+              <Calendar size={16} className="text-[#2A9D6F]" />
+              Appointment
+            </div>
+            <p className="mt-2 text-sm text-[#6B6570]">
+              Scheduled for{' '}
+              <strong className="text-[#1A1025]">
+                {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </strong>
+              .
+            </p>
+          </div>
+        )}
+
         {client.concerns.length > 0 && (
           <div>
             <h3 className="font-semibold text-[#1A1025] mb-3 text-sm">Skin Concerns</h3>
@@ -497,6 +602,8 @@ function ClientFormPanel({
     phone: initialData?.phone || '',
     totalSpent: initialData?.totalSpent?.toString() || '',
     followUpDays: initialData?.followUpDays?.toString() || '',
+    appointmentDate: initialData?.appointmentDate || '',
+    appointmentTime: initialData?.appointmentTime || '',
     skinType: initialData?.skinType || '',
     concerns: initialData?.concerns.join(', ') || '',
     allergies: initialData?.allergies || '',
@@ -523,6 +630,8 @@ function ClientFormPanel({
       totalSpent: parseFloat(form.totalSpent) || 0,
       followUpDays: parseInt(form.followUpDays) || undefined,
       followUpDate: form.followUpDays ? addDays(new Date(), parseInt(form.followUpDays)) : undefined,
+      appointmentDate: form.appointmentDate || undefined,
+      appointmentTime: form.appointmentTime || undefined,
       skinType: form.skinType,
       concerns: form.concerns.split(',').map((c) => c.trim()).filter(Boolean),
       allergies: form.allergies.trim() || 'None',
@@ -614,6 +723,27 @@ function ClientFormPanel({
           <p className="text-xs text-[#6B6570] mt-1">
             Dashboard will show this client one day before the follow-up date.
           </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-[#1A1025] mb-2">Appointment Date</label>
+            <input
+              type="date"
+              value={form.appointmentDate}
+              onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
+              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#1A1025] mb-2">Appointment Time</label>
+            <input
+              type="time"
+              value={form.appointmentTime}
+              onChange={(e) => setForm({ ...form, appointmentTime: e.target.value })}
+              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            />
+          </div>
         </div>
 
         <div>
