@@ -535,7 +535,13 @@ export default function Inventory() {
           <ProductFormModal
             product={editProduct}
             onClose={() => { setShowAddProduct(false); setEditProduct(null); }}
-            onSubmit={editProduct ? updateProduct : (data) => addProduct(data as Omit<Product, 'id' | 'code'>)}
+            onSubmit={(data) => {
+              if (editProduct) {
+                updateProduct(data as Product);
+              } else {
+                addProduct(data as Omit<Product, 'id' | 'code'>);
+              }
+            }}
           />
         )}
       </AnimatePresence>

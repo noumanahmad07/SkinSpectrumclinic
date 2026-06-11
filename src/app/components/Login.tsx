@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import {
   ArrowRight,
   BadgeCheck,
+  CalendarDays,
   Eye,
   EyeOff,
   LockKeyhole,
   Mail,
   ShieldCheck,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../App';
 import ssaLogo from '../../assets/ssa-logo.png';
@@ -19,237 +22,314 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSubmitting(true);
+
+    await new Promise((r) => setTimeout(r, 400));
 
     const success = login(email, password);
+    setIsSubmitting(false);
+
     if (!success) {
       setError('Invalid email or password. Only active staff accounts can sign in.');
     }
   };
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[1.06fr_0.94fr] bg-[#F7F2EA]">
-      <div
-        className="hidden lg:flex relative overflow-hidden min-h-screen"
-        style={{
-          background:
-            'radial-gradient(circle at 18% 16%, rgba(232, 201, 138, 0.14), transparent 28%), radial-gradient(circle at 82% 72%, rgba(143, 96, 154, 0.2), transparent 34%), linear-gradient(135deg, #130A1D 0%, #241631 52%, #34213A 100%)',
-        }}>
-        <div className="absolute inset-0 opacity-[0.08]"
+    <div className="min-h-screen lg:grid lg:grid-cols-2">
+      {/* ── Brand panel ── */}
+      <div className="relative hidden overflow-hidden lg:flex lg:flex-col">
+        <div
+          className="absolute inset-0"
           style={{
-            backgroundImage:
-              'linear-gradient(rgba(245, 236, 215, 0.9) 1px, transparent 1px), linear-gradient(90deg, rgba(245, 236, 215, 0.9) 1px, transparent 1px)',
-            backgroundSize: '56px 56px',
+            background:
+              'radial-gradient(ellipse 80% 60% at 10% 20%, rgba(232,201,138,0.12) 0%, transparent 55%), radial-gradient(ellipse 60% 50% at 90% 80%, rgba(143,96,154,0.18) 0%, transparent 50%), linear-gradient(160deg, #0E0716 0%, #1A1025 45%, #2A1835 100%)',
           }}
         />
 
-        <div className="relative z-10 flex min-h-screen w-full flex-col justify-between px-16 py-12">
-          <div className="flex items-center gap-4 text-[#F8EEDB]">
-            <div
-              className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[#E8C98A]/45 bg-black"
-              style={{
-                boxShadow: '0 18px 48px rgba(209, 173, 105, 0.28)',
-              }}>
+        {/* Grid overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(245,236,215,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(245,236,215,0.8) 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+          }}
+        />
+
+        {/* Ambient orbs */}
+        <div className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-[#C9A96E]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-16 bottom-1/4 h-56 w-56 rounded-full bg-[#8F609A]/15 blur-3xl" />
+
+        <div className="relative z-10 flex min-h-screen flex-col justify-between px-14 py-10 xl:px-20 xl:py-14">
+          {/* Logo */}
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="flex items-center gap-3.5">
+            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-[#E8C98A]/30 bg-black/60 shadow-[0_8px_32px_rgba(201,169,110,0.2)] ring-1 ring-white/5">
               <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-sm font-semibold tracking-[0.18em] text-[#E8C98A] uppercase">
-                Skin Spectrum
-              </p>
-              <p className="text-sm text-[#F8EEDB]/62">Clinical esthetics suite</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#E8C98A]">Skin Spectrum</p>
+              <p className="text-[13px] text-[#F5ECD7]/50">Clinical esthetics suite</p>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="max-w-xl">
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#E8C98A]/25 bg-white/[0.06] px-4 py-2 text-sm font-medium text-[#F8EEDB]/86 shadow-[0_16px_40px_rgba(0,0,0,0.18)] backdrop-blur">
-              <Sparkles size={16} className="text-[#E8C98A]" />
+          {/* Hero copy */}
+          <div className="max-w-lg">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
+              className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#E8C98A]/20 bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-[#F5ECD7]/80 backdrop-blur-sm">
+              <Sparkles size={13} className="text-[#E8C98A]" />
               Premium staff dashboard
-            </div>
+            </motion.div>
 
-            <h1
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.15, ease: 'easeOut' }}
               style={{ fontFamily: 'var(--font-heading)' }}
-              className="max-w-[680px] text-[4.7rem] font-bold leading-[0.94] text-[#FFF7E8]">
-              Where Skin Meets Science
-            </h1>
+              className="text-[2.75rem] font-bold leading-[1.08] tracking-tight text-[#FFF7E8] xl:text-[3.25rem]">
+              Where Skin
+              <br />
+              <span className="bg-gradient-to-r from-[#E8C98A] to-[#F5D88A] bg-clip-text text-transparent">
+                Meets Science
+              </span>
+            </motion.h1>
 
-            <p className="mt-7 max-w-lg text-xl leading-8 text-[#F8EEDB]/76">
-              Manage appointments, client care, billing, and inventory from one polished workspace.
-            </p>
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.25, ease: 'easeOut' }}
+              className="mt-5 max-w-md text-[15px] leading-relaxed text-[#F5ECD7]/60">
+              Manage appointments, client care, billing, and inventory from one polished workspace built for clinical excellence.
+            </motion.p>
 
-            <div className="mt-10 grid max-w-lg grid-cols-2 gap-4">
+            {/* Stats */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.35, ease: 'easeOut' }}
+              className="mt-9 grid grid-cols-2 gap-3">
               {[
-                ['24', 'active treatment rooms'],
-                ['98%', 'client record accuracy'],
-              ].map(([value, label]) => (
+                { value: '24', label: 'active treatment rooms', icon: CalendarDays },
+                { value: '98%', label: 'client record accuracy', icon: Users },
+              ].map(({ value, label, icon: Icon }) => (
                 <div
                   key={label}
-                  className="rounded-lg border border-white/10 bg-white/[0.07] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.14)] backdrop-blur">
-                  <p
-                    style={{ fontFamily: 'var(--font-heading)' }}
-                    className="text-4xl font-bold text-[#F4D58A]">
+                  className="group rounded-xl border border-white/[0.08] bg-white/[0.04] p-4 backdrop-blur-sm transition-colors hover:border-[#E8C98A]/20 hover:bg-white/[0.06]">
+                  <Icon size={15} className="mb-2.5 text-[#E8C98A]/60" strokeWidth={1.75} />
+                  <p style={{ fontFamily: 'var(--font-heading)' }} className="text-2xl font-bold text-[#E8C98A]">
                     {value}
                   </p>
-                  <p className="mt-1 text-sm leading-5 text-[#F8EEDB]/64">{label}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-[#F5ECD7]/45">{label}</p>
                 </div>
               ))}
-            </div>
+            </motion.div>
           </div>
 
-          <div className="flex max-w-xl items-center justify-between border-t border-white/10 pt-7 text-sm text-[#F8EEDB]/70">
+          {/* Footer trust signals */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.45 }}
+            className="flex items-center gap-6 border-t border-white/[0.07] pt-6 text-[12px] text-[#F5ECD7]/45">
             <span className="inline-flex items-center gap-2">
-              <BadgeCheck size={18} className="text-[#E8C98A]" />
+              <BadgeCheck size={15} className="text-[#E8C98A]/70" strokeWidth={1.75} />
               Appointments synced
             </span>
+            <span className="h-3 w-px bg-white/10" />
             <span className="inline-flex items-center gap-2">
-              <ShieldCheck size={18} className="text-[#E8C98A]" />
+              <ShieldCheck size={15} className="text-[#E8C98A]/70" strokeWidth={1.75} />
               Staff access secured
             </span>
-          </div>
+          </motion.div>
         </div>
       </div>
 
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10 sm:px-8">
-        <div className="absolute inset-0"
+      {/* ── Login panel ── */}
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F8F5F0] px-5 py-10 sm:px-8">
+        {/* Background texture */}
+        <div
+          className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'linear-gradient(145deg, #FCFAF6 0%, #F5EEE4 54%, #EFE4D8 100%)',
+              'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(201,169,110,0.08) 0%, transparent 60%), linear-gradient(180deg, #FAF7F2 0%, #F3EBE0 100%)',
           }}
         />
+        <div className="pointer-events-none absolute -right-20 top-20 h-64 w-64 rounded-full bg-[#C9A96E]/8 blur-3xl" />
+        <div className="pointer-events-none absolute -left-16 bottom-32 h-48 w-48 rounded-full bg-[#1A1025]/5 blur-3xl" />
 
-        <div className="relative z-10 w-full max-w-[520px]">
-          <div className="mb-8 flex items-center justify-between lg:hidden">
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-black"
-                style={{
-                  boxShadow: '0 12px 28px rgba(201, 169, 110, 0.24)',
-                }}>
-                <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold tracking-[0.14em] text-[#A67F3F] uppercase">
-                  Skin Spectrum
-                </p>
-                <p className="text-sm text-[#766B78]">Staff dashboard</p>
-              </div>
+        <div className="relative z-10 w-full max-w-[440px]">
+          {/* Mobile logo */}
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="mb-7 flex items-center gap-3 lg:hidden">
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-[#1A1025] shadow-md">
+              <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
-          </div>
-
-          <div
-            className="rounded-lg border border-white/80 bg-white/90 p-7 shadow-[0_24px_70px_rgba(50,33,49,0.12)] backdrop-blur sm:p-10">
-            <div className="mb-8 flex items-start justify-between gap-5">
-              <div>
-                <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#F7EFE1] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#A67F3F]">
-                  <ShieldCheck size={14} />
-                  Staff Access
-                </p>
-                <h2
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-4xl font-bold leading-tight text-[#170D20] sm:text-5xl">
-                  Welcome Back
-                </h2>
-                <p className="mt-3 text-base text-[#6E6472]">
-                  Sign in to continue to Skin Spectrum.
-                </p>
-              </div>
-              <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1A1025] text-[#F2D794] shadow-[0_16px_32px_rgba(26,16,37,0.18)] sm:flex">
-                <LockKeyhole size={21} />
-              </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07840]">Skin Spectrum</p>
+              <p className="text-[12px] text-muted-foreground">Staff dashboard</p>
             </div>
+          </motion.div>
 
-            {error && (
-              <div className="mb-6 rounded-lg border border-[#E5445A]/20 bg-[#E5445A]/10 p-4 text-sm font-medium text-[#BE3146]">
-                {error}
-              </div>
-            )}
+          {/* Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 28, delay: 0.05 }}
+            className="overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_4px_6px_rgba(26,16,37,0.04),0_24px_64px_rgba(26,16,37,0.10)] backdrop-blur-sm">
+            {/* Gold accent bar */}
+            <div className="h-[3px] bg-gradient-to-r from-[#A07840] via-[#C9A96E] to-[#E8C98A]" />
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="email" className="mb-2 block text-sm font-semibold text-[#1A1025]">
-                  Email Address
-                </label>
-                <div className="group relative">
-                  <Mail
-                    size={19}
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#A69BA8] transition-colors group-focus-within:text-[#B58A45]"
-                  />
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="staff@skinspectrum.com"
-                    required
-                    className="h-14 w-full rounded-lg border border-[#E8DFD4] bg-[#FFFCF8] px-4 pl-12 text-[#21162B] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] outline-none transition-all placeholder:text-[#8C8390] focus:border-[#C9A96E] focus:bg-white focus:ring-4 focus:ring-[#C9A96E]/18"
-                  />
+            <div className="p-7 sm:p-9">
+              {/* Header */}
+              <div className="mb-7 flex items-start justify-between gap-4">
+                <div>
+                  <span className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#F5ECD7]/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#A07840] ring-1 ring-[#C9A96E]/20">
+                    <ShieldCheck size={11} strokeWidth={2.5} />
+                    Staff Access
+                  </span>
+                  <h2
+                    style={{ fontFamily: 'var(--font-heading)' }}
+                    className="text-[1.75rem] font-bold leading-tight tracking-tight text-[#1A1025] sm:text-[2rem]">
+                    Welcome back
+                  </h2>
+                  <p className="mt-1.5 text-[13px] text-muted-foreground">
+                    Sign in to continue to Skin Spectrum
+                  </p>
+                </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1A1025] text-[#E8C98A] shadow-[0_4px_16px_rgba(26,16,37,0.2)]">
+                  <LockKeyhole size={18} strokeWidth={1.75} />
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="password" className="mb-2 block text-sm font-semibold text-[#1A1025]">
-                  Password
-                </label>
-                <div className="group relative">
-                  <LockKeyhole
-                    size={19}
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#A69BA8] transition-colors group-focus-within:text-[#B58A45]"
-                  />
-                  <input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    className="h-14 w-full rounded-lg border border-[#E8DFD4] bg-[#FFFCF8] px-4 pl-12 pr-12 text-[#21162B] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] outline-none transition-all placeholder:text-[#8C8390] focus:border-[#C9A96E] focus:bg-white focus:ring-4 focus:ring-[#C9A96E]/18"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#7F7482] transition-colors hover:bg-[#F7EFE1] hover:text-[#A67F3F]">
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                  </button>
+              {/* Error */}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5 overflow-hidden rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium text-destructive">
+                  {error}
+                </motion.div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Email */}
+                <div>
+                  <label htmlFor="email" className="mb-1.5 block text-[12px] font-semibold text-[#1A1025]">
+                    Email address
+                  </label>
+                  <div className="group relative">
+                    <Mail
+                      size={16}
+                      strokeWidth={1.75}
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors group-focus-within:text-[#C9A96E]"
+                    />
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="staff@skinspectrum.com"
+                      required
+                      autoComplete="email"
+                      className="h-11 w-full rounded-xl border border-border bg-[#FAFAF8] pl-10 pr-4 text-[13px] text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-[#C9A96E]/60 focus:bg-white focus:ring-[3px] focus:ring-[#C9A96E]/12"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center">
-                <input
-                  id="remember"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-[#D8CABA] text-[#C9A96E] focus:ring-[#C9A96E] focus:ring-offset-0"
-                />
-                  <label htmlFor="remember" className="ml-2 text-sm text-[#6B6570]">
-                  Remember me for 30 days
-                </label>
+                {/* Password */}
+                <div>
+                  <label htmlFor="password" className="mb-1.5 block text-[12px] font-semibold text-[#1A1025]">
+                    Password
+                  </label>
+                  <div className="group relative">
+                    <LockKeyhole
+                      size={16}
+                      strokeWidth={1.75}
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors group-focus-within:text-[#C9A96E]"
+                    />
+                    <input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      autoComplete="current-password"
+                      className="h-11 w-full rounded-xl border border-border bg-[#FAFAF8] pl-10 pr-11 text-[13px] text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-[#C9A96E]/60 focus:bg-white focus:ring-[3px] focus:ring-[#C9A96E]/12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <span className="hidden text-sm font-medium text-[#A67F3F] sm:inline">Authorized staff only</span>
-              </div>
 
-              <button
-                type="submit"
-                className="group flex h-14 w-full items-center justify-center gap-2 rounded-lg px-6 font-semibold text-[#170D20] shadow-[0_14px_30px_rgba(201,169,110,0.28)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(201,169,110,0.36)] active:translate-y-0"
-                style={{
-                  background: 'linear-gradient(135deg, #C79C53 0%, #F0CF82 100%)',
-                }}>
-                Sign In
-                <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
-              </button>
-            </form>
-          </div>
+                {/* Remember + note */}
+                <div className="flex items-center justify-between gap-3 pt-0.5">
+                  <label htmlFor="remember" className="flex cursor-pointer items-center gap-2">
+                    <input
+                      id="remember"
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-border text-[#C9A96E] focus:ring-[#C9A96E]/30 focus:ring-offset-0"
+                    />
+                    <span className="text-[12px] text-muted-foreground">Remember me for 30 days</span>
+                  </label>
+                  <span className="hidden text-[11px] font-medium text-[#A07840] sm:block">Authorized staff only</span>
+                </div>
 
-          <p className="mt-6 text-center text-sm text-[#6B6570]">
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-[#C9A96E] shadow-[0_0_0_5px_rgba(201,169,110,0.14)]" />
-              Secure Skin Spectrum access
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="group relative mt-1 flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[13px] font-semibold text-[#1A1025] shadow-[0_4px_16px_rgba(201,169,110,0.35)] transition-all hover:shadow-[0_6px_24px_rgba(201,169,110,0.45)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+                  style={{ background: 'linear-gradient(135deg, #B8894A 0%, #D4AD6A 50%, #E8C98A 100%)' }}>
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1A1025]/20 border-t-[#1A1025]" />
+                      Signing in…
+                    </span>
+                  ) : (
+                    <>
+                      Sign in
+                      <ArrowRight size={16} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </motion.div>
+
+          {/* Footer */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mt-5 flex items-center justify-center gap-2 text-[12px] text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#C9A96E]/40 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C9A96E]" />
             </span>
-          </p>
+            Secure Skin Spectrum access
+          </motion.p>
         </div>
       </div>
     </div>

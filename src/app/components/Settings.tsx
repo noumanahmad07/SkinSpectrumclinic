@@ -556,8 +556,9 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
     onSave('User added successfully!');
   };
 
-  const handleUpdateUser = (data: UserAccount) => {
-    persistUsers(users.map((u) => (u.id === data.id ? data : u)));
+  const handleUpdateUser = (data: Omit<UserAccount, 'id'> & { id?: number }) => {
+    if (data.id == null) return;
+    persistUsers(users.map((u) => (u.id === data.id ? { ...data, id: data.id } : u)));
     setEditUser(null);
     onSave('User updated successfully!');
   };
@@ -790,8 +791,9 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
     onSave('Bill person added successfully!');
   };
 
-  const handleUpdate = (data: BillPerson) => {
-    persist(billPersons.map((p) => (p.id === data.id ? data : p)));
+  const handleUpdate = (data: Omit<BillPerson, 'id'> & { id?: number }) => {
+    if (data.id == null) return;
+    persist(billPersons.map((p) => (p.id === data.id ? { ...data, id: data.id } : p)));
     setEditPerson(null);
     onSave('Bill person updated successfully!');
   };
