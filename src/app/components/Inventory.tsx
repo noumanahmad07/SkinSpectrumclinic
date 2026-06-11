@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, ChevronDown } from 'lucide-react';
+import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, ChevronDown, AlertTriangle, Package2, Clock3, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Product {
@@ -221,50 +221,101 @@ export default function Inventory() {
       </div>
 
       {(stockAlerts.length > 0 || expiryAlerts.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {stockAlerts.length > 0 && (
-            <div className="rounded-lg border border-[#F0A500]/25 bg-[#FFF8E8] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-[#1A1025]">Stock alerts</h3>
-                  <p className="text-sm text-[#6B6570] mt-1">
-                    {stockAlerts.length} product{stockAlerts.length > 1 ? 's are' : ' is'} at or below minimum stock.
-                  </p>
+            <motion.div
+              className={`overflow-hidden rounded-2xl border border-[#F0A500]/30 bg-gradient-to-br from-[#FFF8E8] via-white to-[#FFF3D6] p-5 shadow-sm ${stockAlerts.length > 0 && expiryAlerts.length === 0 ? 'md:col-span-2' : ''}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl bg-[#F0A500]/15 p-3 text-[#B97A00] shadow-sm">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#B97A00] font-semibold">Stock watch</p>
+                    <h3 className="mt-1 text-lg font-bold text-[#1A1025]">Restock attention needed</h3>
+                    <p className="mt-1 text-sm text-[#6B6570]">
+                      {stockAlerts.length} product{stockAlerts.length > 1 ? 's are' : ' is'} currently at or below the minimum stock level.
+                    </p>
+                  </div>
                 </div>
-                <span className="rounded-full bg-[#F0A500] px-3 py-1 text-xs font-bold text-white">{stockAlerts.length}</span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="rounded-full bg-[#F0A500] px-3 py-1 text-xs font-bold text-white shadow-sm">{stockAlerts.length} total</span>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-[#6B6570]">
+                    <span className="rounded-full bg-[#E5445A]/10 px-2 py-1 text-[#E5445A]">Critical: {stockAlerts.filter((item) => item.stock === 0).length}</span>
+                    <span className="rounded-full bg-[#F0A500]/10 px-2 py-1 text-[#B97A00]">Low: {stockAlerts.filter((item) => item.stock > 0).length}</span>
+                  </div>
+                </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {stockAlerts.slice(0, 4).map((item) => (
-                  <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6B6570] border border-[#EDE8E3]">
-                    {item.name}: {item.stock}/{item.minStock}
-                  </span>
+
+              <div className="mt-4 space-y-2">
+                {stockAlerts.slice(0, 5).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#EDE8E3] bg-white/90 px-3 py-2.5 shadow-sm">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1A1025]">{item.name}</p>
+                      <p className="text-xs text-[#6B6570]">Current stock: {item.stock} / Min: {item.minStock}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.stock === 0 ? 'bg-[#E5445A]/10 text-[#E5445A]' : 'bg-[#F0A500]/10 text-[#B97A00]'}`}>
+                      {item.stock === 0 ? 'Out' : 'Low'}
+                    </span>
+                  </div>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {expiryAlerts.length > 0 && (
-            <div className="rounded-lg border border-[#E5445A]/20 bg-[#FFF1F3] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-[#1A1025]">Expiry alerts</h3>
-                  <p className="text-sm text-[#6B6570] mt-1">
-                    {expiryAlerts.length} product{expiryAlerts.length > 1 ? 's need' : ' needs'} expiry review.
-                  </p>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`overflow-hidden rounded-2xl border border-[#E5445A]/20 bg-gradient-to-br from-[#FFF1F3] via-white to-[#FFE8EC] p-5 shadow-sm ${expiryAlerts.length > 0 && stockAlerts.length === 0 ? 'md:col-span-2' : ''}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl bg-[#E5445A]/10 p-3 text-[#C93850] shadow-sm">
+                    <ShieldAlert size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#C93850] font-semibold">Expiry watch</p>
+                    <h3 className="mt-1 text-lg font-bold text-[#1A1025]">Review expiring products</h3>
+                    <p className="mt-1 text-sm text-[#6B6570]">
+                      {expiryAlerts.length} product{expiryAlerts.length > 1 ? 's need' : ' needs'} expiry review soon.
+                    </p>
+                  </div>
                 </div>
-                <span className="rounded-full bg-[#E5445A] px-3 py-1 text-xs font-bold text-white">{expiryAlerts.length}</span>
+                <span className="rounded-full bg-[#E5445A] px-3 py-1 text-xs font-bold text-white shadow-sm">{expiryAlerts.length}</span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {expiryAlerts.slice(0, 4).map((item) => {
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-[#EDE8E3] bg-white/90 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#6B6570]">Near expiry</div>
+                  <div className="mt-1 text-2xl font-bold text-[#1A1025]">{expiryAlerts.filter((item) => getExpiryStatus(item.expiry).label === 'Near Expiry').length}</div>
+                  <p className="text-xs text-[#6B6570]">Within 30 days</p>
+                </div>
+                <div className="rounded-xl border border-[#EDE8E3] bg-white/90 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#6B6570]">Expired</div>
+                  <div className="mt-1 text-2xl font-bold text-[#1A1025]">{expiryAlerts.filter((item) => getExpiryStatus(item.expiry).label === 'Expired').length}</div>
+                  <p className="text-xs text-[#6B6570]">Needs immediate action</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {expiryAlerts.slice(0, 5).map((item) => {
                   const expiryStatus = getExpiryStatus(item.expiry);
                   return (
-                    <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6B6570] border border-[#EDE8E3]">
-                      {item.name}: {expiryStatus.label}
-                    </span>
+                    <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#EDE8E3] bg-white/90 px-3 py-2.5 shadow-sm">
+                      <div>
+                        <p className="text-sm font-semibold text-[#1A1025]">{item.name}</p>
+                        <p className="text-xs text-[#6B6570]">{item.expiry || 'No expiry date set'}</p>
+                      </div>
+                      <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ color: expiryStatus.color, backgroundColor: expiryStatus.bg }}>
+                        {expiryStatus.label}
+                      </span>
+                    </div>
                   );
                 })}
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
       )}
