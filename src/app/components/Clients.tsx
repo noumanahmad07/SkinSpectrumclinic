@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, X, Phone, Mail, Calendar, Wallet, Filter, Edit, CalendarClock, Eye } from 'lucide-react';
+import { Search, Plus, X, Phone, Mail, Calendar, Edit, CalendarClock, Eye, Users, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
-const skinTypeColors: Record<string, string> = {
+const skinTypeStyles: Record<string, string> = {
+  Normal: 'bg-[#2ECC8A]/10 text-[#159B61]',
+  Oily: 'bg-[#F0A500]/10 text-[#A86F00]',
+  Dry: 'bg-destructive/10 text-destructive',
+  Combination: 'bg-secondary text-primary',
+  Sensitive: 'bg-[#8F609A]/10 text-[#8F609A]',
+};
+
+const skinTypeAccent: Record<string, string> = {
   Normal: '#2ECC8A',
   Oily: '#F0A500',
   Dry: '#E5445A',
   Combination: '#C9A96E',
-  Sensitive: '#A07840',
-};
-
-const skinTypeEmojis: Record<string, string> = {
-  Normal: '😊',
-  Oily: '💧',
-  Dry: '🏜️',
-  Combination: '🔄',
-  Sensitive: '🌸',
+  Sensitive: '#8F609A',
 };
 
 interface Client {
@@ -115,6 +115,33 @@ const CLIENTS_STORAGE_KEY = 'skinspectrum_clients';
 
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
+function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-border bg-card shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function SkinTypeBadge({ type }: { type: string }) {
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-medium ${skinTypeStyles[type] || skinTypeStyles.Normal}`}>
+      {type}
+    </span>
+  );
+}
+
+function ClientAvatar({ name, skinType }: { name: string; skinType: string }) {
+  const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2);
+  return (
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+      style={{ backgroundColor: skinTypeAccent[skinType] || skinTypeAccent.Normal }}>
+      {initials}
+    </div>
+  );
+}
+
 const addDays = (date: Date, days: number) => {
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + days);
@@ -166,228 +193,207 @@ export default function Clients() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Success Toast */}
+    <div className="mx-auto flex max-w-[1400px] flex-col pb-3 lg:h-[calc(100vh-6.75rem)]">
       <AnimatePresence>
         {successMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 right-4 md:right-8 z-50 bg-[#2ECC8A] text-white px-6 py-3 rounded-lg shadow-lg font-medium">
-            ✓ {successMessage}
+            exit={{ opacity: 0, y: -12 }}
+            className="fixed right-4 top-20 z-50 flex items-center gap-2 rounded-lg border border-[#2ECC8A]/20 bg-card px-4 py-2.5 text-[13px] font-medium text-[#159B61] shadow-lg md:right-8">
+            <Check size={16} strokeWidth={2} />
+            {successMessage}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B6570]" size={20} />
+      <Panel className="mb-4 shrink-0 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} strokeWidth={1.75} />
             <input
               type="text"
-              placeholder="Search clients..."
+              placeholder="Search clients…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-white border border-[#EDE8E3] rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent shadow-sm"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
           </div>
-        </div>
-        <button
-          onClick={() => setShowAddClient(true)}
-          className="px-4 md:px-6 py-3 rounded-lg font-semibold text-white flex items-center gap-2
-            transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg whitespace-nowrap"
-          style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
-          <Plus size={20} />
-          <span className="hidden sm:inline">Add New Client</span>
-          <span className="sm:hidden">Add</span>
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-2 text-sm text-[#6B6570]">
-          <Filter size={14} />
-        </div>
-        <button
-          onClick={() => setFilterSkinType(null)}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-            filterSkinType === null ? 'bg-[#C9A96E] text-white' : 'bg-white border border-[#EDE8E3] text-[#6B6570] hover:bg-[#F8F5F0]'
-          }`}>
-          All ({clients.length})
-        </button>
-        {skinTypes.map((type) => (
           <button
-            key={type}
-            onClick={() => setFilterSkinType(type === filterSkinType ? null : type)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filterSkinType === type ? 'text-white' : 'bg-white border border-[#EDE8E3] text-[#6B6570] hover:bg-[#F8F5F0]'
-            }`}
-            style={filterSkinType === type ? { backgroundColor: skinTypeColors[type] } : {}}>
-            {type}
+            onClick={() => setShowAddClient(true)}
+            className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+            <Plus size={16} strokeWidth={2} />
+            <span className="hidden sm:inline">Add New Client</span>
+            <span className="sm:hidden">Add Client</span>
           </button>
-        ))}
-      </div>
-
-      {/* Clients Table */}
-      <div className="bg-white rounded-[14px] overflow-hidden border border-[#EDE8E3]"
-        style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full min-w-[920px]">
-            <thead className="bg-[#F8F5F0] border-b border-[#EDE8E3]">
-              <tr>
-                {['Client', 'Phone', 'Skin Type', 'Appointment', 'Last Visit', 'Total Spent', 'Follow Up', 'Actions'].map((h) => (
-                  <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-[#6B6570] uppercase tracking-wider">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.map((client, idx) => (
-                <tr
-                  key={client.id}
-                  className={`border-b border-[#EDE8E3]/60 hover:bg-[#F8F5F0] transition-colors ${
-                    idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F5F0]/30'
-                  }`}>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                        style={{ background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)` }}>
-                        {client.name.split(' ').map((n) => n[0]).join('')}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold text-[#1A1025]">{client.name}</div>
-                        {client.email && (
-                          <div className="flex items-center gap-1.5 text-xs text-[#6B6570] mt-0.5">
-                            <Mail size={12} />
-                            <span className="truncate max-w-[220px]">{client.email}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-sm text-[#6B6570] whitespace-nowrap">{client.phone}</td>
-                  <td className="py-4 px-4">
-                    <span
-                      className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold text-white"
-                      style={{ backgroundColor: skinTypeColors[client.skinType] }}>
-                      {client.skinType}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4 text-sm text-[#1A1025] font-medium whitespace-nowrap">
-                    {client.appointmentDate && client.appointmentTime ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF8F4] px-3 py-1 text-xs font-semibold text-[#2A9D6F]">
-                        <Calendar size={12} />
-                        {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
-                        {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                    ) : (
-                      <span className="text-[#8D8792]">None</span>
-                    )}
-                  </td>
-                  <td className="py-4 px-4 text-sm text-[#1A1025] font-medium whitespace-nowrap">
-                    {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </td>
-                  <td className="py-4 px-4 text-sm font-bold text-[#C9A96E] whitespace-nowrap">
-                    {formatCurrency(client.totalSpent)}
-                  </td>
-                  <td className="py-4 px-4 text-sm text-[#6B6570] whitespace-nowrap">
-                    {client.followUpDate ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F7EFE1] px-3 py-1 text-xs font-semibold text-[#A67F3F]">
-                        <CalendarClock size={12} />
-                        {new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                    ) : (
-                      <span className="text-[#8D8792]">None</span>
-                    )}
-                  </td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setSelectedClient(client)}
-                        className="p-2 rounded-lg bg-[#F8F5F0] text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors"
-                        title="View client">
-                        <Eye size={15} />
-                      </button>
-                      <button
-                        onClick={() => setEditClient(client)}
-                        className="p-2 rounded-lg bg-[#F8F5F0] text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors"
-                        title="Edit client">
-                        <Edit size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
 
-        <div className="md:hidden divide-y divide-[#EDE8E3]">
-          {filteredClients.map((client) => (
-            <div key={client.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                    style={{ background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)` }}>
-                    {client.name.split(' ').map((n) => n[0]).join('')}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-[#1A1025] truncate">{client.name}</div>
-                    <div className="text-xs text-[#6B6570] truncate">{client.phone}</div>
-                  </div>
-                </div>
-                <span className="px-2 py-1 rounded-full text-xs font-semibold text-white flex-shrink-0" style={{ backgroundColor: skinTypeColors[client.skinType] }}>
-                  {client.skinType}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-xs text-[#6B6570]">Appointment</div>
-                  <div className="font-semibold text-[#1A1025]">
-                    {client.appointmentDate && client.appointmentTime
-                      ? new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                      : 'None'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#6B6570]">Last Visit</div>
-                  <div className="font-semibold text-[#1A1025]">{new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#6B6570]">Total Spent</div>
-                  <div className="font-bold text-[#C9A96E]">{formatCurrency(client.totalSpent)}</div>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => setSelectedClient(client)}
-                  className="flex-1 py-2 rounded-lg bg-[#F8F5F0] text-sm font-semibold text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors">
-                  View
-                </button>
-                <button
-                  onClick={() => setEditClient(client)}
-                  className="flex-1 py-2 rounded-lg bg-[#F8F5F0] text-sm font-semibold text-[#6B6570] hover:bg-[#C9A96E] hover:text-white transition-colors">
-                  Edit
-                </button>
-              </div>
-            </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setFilterSkinType(null)}
+            className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+              filterSkinType === null
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}>
+            All ({clients.length})
+          </button>
+          {skinTypes.map((type) => (
+            <button
+              key={type}
+              onClick={() => setFilterSkinType(type === filterSkinType ? null : type)}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                filterSkinType === type
+                  ? 'bg-foreground text-background'
+                  : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}>
+              {type}
+            </button>
           ))}
         </div>
-      </div>
+      </Panel>
 
-      {filteredClients.length === 0 && (
-        <div className="text-center py-16">
-          <div className="text-6xl mb-4">🔍</div>
-          <p className="text-[#6B6570] text-lg">No clients found</p>
-          <p className="text-sm text-[#6B6570] mt-2">Try adjusting your search or filters</p>
-        </div>
-      )}
+      <Panel className="min-h-0 flex-1 overflow-hidden p-0">
+        {filteredClients.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground/50">
+              <Users size={22} strokeWidth={1.5} />
+            </div>
+            <p className="text-[14px] font-medium text-foreground">No clients found</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden h-full overflow-x-hidden overflow-y-auto scroll-area md:block">
+              <table className="w-full table-fixed">
+                <thead className="sticky top-0 z-10 bg-card">
+                  <tr className="border-b border-border bg-card">
+                    <th className="w-[24%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Client</th>
+                    <th className="w-[13%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Phone</th>
+                    <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin</th>
+                    <th className="w-[14%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Appointment</th>
+                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Last Visit</th>
+                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Spent</th>
+                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Follow Up</th>
+                    <th className="w-[6%] bg-card px-2 py-2.5" aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody className="bg-card">
+                  {filteredClients.map((client) => (
+                    <tr key={client.id} className="border-b border-border/60 bg-card transition-colors last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <ClientAvatar name={client.name} skinType={client.skinType} />
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-medium text-foreground">{client.name}</div>
+                            {client.email && (
+                              <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+                                <Mail size={11} strokeWidth={1.75} />
+                                <span className="truncate">{client.email}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="block truncate text-[12px] text-muted-foreground">{client.phone}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <SkinTypeBadge type={client.skinType} />
+                      </td>
+                      <td className="px-3 py-3">
+                        {client.appointmentDate && client.appointmentTime ? (
+                          <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-[#2ECC8A]/10 px-2 py-0.5 text-[11px] font-medium text-[#159B61]">
+                            <Calendar size={11} strokeWidth={1.75} />
+                            {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] text-muted-foreground/60">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-[12px] font-medium text-foreground">
+                          {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-[12px] font-medium tabular-nums text-primary">{formatCurrency(client.totalSpent)}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        {client.followUpDate ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary">
+                            <CalendarClock size={11} strokeWidth={1.75} />
+                            {new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] text-muted-foreground/60">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-3">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setSelectedClient(client)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+                            title="View client">
+                            <Eye size={14} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => setEditClient(client)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            title="Edit client">
+                            <Edit size={14} strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="divide-y divide-border md:hidden">
+              {filteredClients.map((client) => (
+                <div key={client.id} className="bg-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ClientAvatar name={client.name} skinType={client.skinType} />
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-medium text-foreground">{client.name}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">{client.phone}</div>
+                      </div>
+                    </div>
+                    <SkinTypeBadge type={client.skinType} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-[12px]">
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Last Visit</div>
+                      <div className="font-medium text-foreground">
+                        {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted-foreground">Total Spent</div>
+                      <div className="font-medium tabular-nums text-primary">{formatCurrency(client.totalSpent)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => setSelectedClient(client)}
+                      className="flex-1 rounded-lg border border-border py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                      View
+                    </button>
+                    <button
+                      onClick={() => setEditClient(client)}
+                      className="flex-1 rounded-lg bg-primary py-2 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90">
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Panel>
 
       {/* Client Detail Panel */}
       <AnimatePresence>
@@ -401,9 +407,10 @@ export default function Clients() {
       </AnimatePresence>
 
       {/* Edit Client Panel */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {editClient && (
           <ClientFormPanel
+            key={`edit-client-${editClient.id}`}
             title="Edit Client"
             initialData={editClient}
             onClose={() => setEditClient(null)}
@@ -413,9 +420,10 @@ export default function Clients() {
       </AnimatePresence>
 
       {/* Add Client Panel */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showAddClient && (
           <ClientFormPanel
+            key="add-client"
             title="Add New Client"
             onClose={() => setShowAddClient(false)}
             onSubmit={addClient}
@@ -437,7 +445,7 @@ function ClientDetailPanel({ client, onClose, onEdit }: {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}>
       <motion.div
         initial={{ y: '100%' }}
@@ -445,137 +453,102 @@ function ClientDetailPanel({ client, onClose, onEdit }: {
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-t-[24px] sm:rounded-[14px] w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto"
-        style={{ boxShadow: '0 20px 60px rgba(26, 16, 37, 0.3)' }}>
-      {/* Drag handle for mobile */}
-      <div className="sm:hidden flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-[#EDE8E3] rounded-full" />
+        className="max-h-[92vh] w-full overflow-y-auto scroll-area rounded-t-2xl border border-border bg-card shadow-xl sm:max-w-2xl sm:rounded-xl">
+      <div className="flex justify-center pt-3 pb-1 sm:hidden">
+        <div className="h-1 w-8 rounded-full bg-border" />
       </div>
 
-      {/* Header */}
-      <div className="sticky top-0 bg-white border-b border-[#EDE8E3] p-4 md:p-6 flex items-center justify-between z-10">
-        <div className="flex items-center gap-3 md:gap-4">
-          <div
-            className="w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center text-white text-xl md:text-2xl font-bold"
-            style={{
-              background: `linear-gradient(135deg, ${skinTypeColors[client.skinType]} 0%, ${skinTypeColors[client.skinType]}CC 100%)`,
-            }}>
-            {client.name.split(' ').map((n) => n[0]).join('')}
-          </div>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card p-4 md:p-5">
+        <div className="flex items-center gap-3">
+          <ClientAvatar name={client.name} skinType={client.skinType} />
           <div>
-            <h2 style={{ fontFamily: 'var(--font-heading)' }}
-              className="text-xl md:text-2xl font-bold text-[#1A1025]">
+            <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-semibold text-foreground">
               {client.name}
             </h2>
-            <span className="inline-block mt-1 px-3 py-0.5 rounded-full text-xs font-medium text-white"
-              style={{ backgroundColor: skinTypeColors[client.skinType] }}>
-              {client.skinType} Skin
-            </span>
+            <SkinTypeBadge type={client.skinType} />
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={onEdit}
-            className="p-2 bg-[#F8F5F0] hover:bg-[#C9A96E] hover:text-white rounded-lg transition-colors">
-            <Edit size={18} />
+        <div className="flex items-center gap-1">
+          <button onClick={onEdit} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary">
+            <Edit size={16} strokeWidth={1.75} />
           </button>
-          <button onClick={onClose}
-            className="p-2 hover:bg-[#F8F5F0] rounded-lg transition-colors">
-            <X size={22} className="text-[#6B6570]" />
+          <button onClick={onClose} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted">
+            <X size={18} />
           </button>
         </div>
       </div>
 
-      <div className="p-4 md:p-6 space-y-5">
+      <div className="space-y-4 p-4 md:p-5">
         <div>
-          <h3 className="font-semibold text-[#1A1025] mb-3 text-sm">Contact Information</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 text-[#6B6570]">
-              <Phone size={15} /><span>{client.phone}</span>
-            </div>
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Contact</h3>
+          <div className="space-y-2 text-[13px] text-muted-foreground">
+            <div className="flex items-center gap-2"><Phone size={14} strokeWidth={1.75} /><span>{client.phone}</span></div>
             {client.email && (
-              <div className="flex items-center gap-3 text-[#6B6570]">
-                <Mail size={15} /><span>{client.email}</span>
-              </div>
+              <div className="flex items-center gap-2"><Mail size={14} strokeWidth={1.75} /><span>{client.email}</span></div>
             )}
           </div>
         </div>
 
         {client.appointmentDate && client.appointmentTime && (
-          <div className="p-4 bg-[#EEF8F4] rounded-lg border border-[#2ECC8A]/20">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#1A1025]">
-              <Calendar size={16} className="text-[#2A9D6F]" />
+          <div className="rounded-lg border border-[#2ECC8A]/20 bg-[#2ECC8A]/[0.04] p-3.5">
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <Calendar size={15} strokeWidth={1.75} className="text-[#159B61]" />
               Appointment
             </div>
-            <p className="mt-2 text-sm text-[#6B6570]">
-              Scheduled for{' '}
-              <strong className="text-[#1A1025]">
-                {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </strong>
-              .
+            <p className="mt-1.5 text-[13px] text-muted-foreground">
+              {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+              })}
             </p>
           </div>
         )}
 
         {client.concerns.length > 0 && (
           <div>
-            <h3 className="font-semibold text-[#1A1025] mb-3 text-sm">Skin Concerns</h3>
-            <div className="flex flex-wrap gap-2">
-              {client.concerns.map((concern, idx) => (
-                <span key={idx} className="px-3 py-1 bg-[#F0A500]/10 text-[#F0A500] rounded-full text-xs font-medium">
-                  {concern}
-                </span>
+            <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin Concerns</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {client.concerns.map((concern) => (
+                <span key={concern} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary">{concern}</span>
               ))}
             </div>
           </div>
         )}
 
         <div>
-          <h3 className="font-semibold text-[#1A1025] mb-3 text-sm">Allergies</h3>
-          <p className={`text-sm ${client.allergies === 'None' ? 'text-[#2ECC8A]' : 'text-[#E5445A] font-medium'}`}>
-            {client.allergies}
-          </p>
+          <h3 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Allergies</h3>
+          <p className={`text-[13px] ${client.allergies === 'None' ? 'text-[#159B61]' : 'font-medium text-destructive'}`}>{client.allergies}</p>
         </div>
 
         {client.notes && (
           <div>
-            <h3 className="font-semibold text-[#1A1025] mb-3 text-sm">Notes</h3>
-            <p className="text-sm text-[#6B6570] bg-[#F8F5F0] p-4 rounded-lg">{client.notes}</p>
+            <h3 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Notes</h3>
+            <p className="rounded-lg bg-background p-3.5 text-[13px] leading-relaxed text-muted-foreground">{client.notes}</p>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-[#F8F5F0] rounded-lg">
-            <div className="text-xs text-[#6B6570] mb-1">Last Visit</div>
-            <div className="font-semibold text-[#1A1025] text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-background p-3.5">
+            <div className="text-[11px] text-muted-foreground">Last Visit</div>
+            <div className="mt-0.5 text-[13px] font-medium text-foreground">
               {new Date(client.lastVisit).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
           </div>
-          <div className="p-4 bg-[#F8F5F0] rounded-lg">
-            <div className="text-xs text-[#6B6570] mb-1">Total Spent</div>
-            <div style={{ fontFamily: 'var(--font-heading)' }} className="text-xl md:text-2xl font-bold text-[#C9A96E]">
+          <div className="rounded-lg bg-background p-3.5">
+            <div className="text-[11px] text-muted-foreground">Total Spent</div>
+            <div style={{ fontFamily: 'var(--font-heading)' }} className="mt-0.5 text-lg font-semibold tabular-nums text-primary">
               {formatCurrency(client.totalSpent)}
             </div>
           </div>
         </div>
 
         {client.followUpDate && (
-          <div className="p-4 bg-[#F7EFE1] rounded-lg border border-[#D1AD69]/30">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#1A1025]">
-              <CalendarClock size={16} className="text-[#A67F3F]" />
+          <div className="rounded-lg border border-primary/20 bg-secondary/40 p-3.5">
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <CalendarClock size={15} strokeWidth={1.75} className="text-primary" />
               Follow Up Reminder
             </div>
-            <p className="mt-2 text-sm text-[#6B6570]">
-              Follow up after {client.followUpDays} day{client.followUpDays === 1 ? '' : 's'} on{' '}
-              <strong className="text-[#1A1025]">
-                {new Date(client.followUpDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </strong>
-              .
+            <p className="mt-1.5 text-[13px] text-muted-foreground">
+              {client.followUpDays} day{client.followUpDays === 1 ? '' : 's'} — {new Date(client.followUpDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
         )}
@@ -644,60 +617,61 @@ function ClientFormPanel({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}>
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 25 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 32, mass: 0.95 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-t-[24px] sm:rounded-[14px] w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto"
-        style={{ boxShadow: '0 20px 60px rgba(26, 16, 37, 0.3)' }}>
-      <div className="sm:hidden flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-[#EDE8E3] rounded-full" />
+        className="w-full will-change-transform sm:max-w-2xl">
+        <div className="max-h-[92vh] overflow-y-auto scroll-area rounded-t-2xl border border-border bg-card shadow-xl sm:rounded-xl">
+      <div className="flex justify-center pt-3 pb-1 sm:hidden">
+        <div className="h-1 w-8 rounded-full bg-border" />
       </div>
-      <div className="sticky top-0 bg-white border-b border-[#EDE8E3] p-4 md:p-6 flex items-center justify-between z-10">
-        <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-xl md:text-2xl font-bold text-[#1A1025]">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card p-4 md:p-5">
+        <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-semibold text-foreground">
           {title}
         </h2>
-        <button onClick={onClose} className="p-2 hover:bg-[#F8F5F0] rounded-lg transition-colors">
-          <X size={22} className="text-[#6B6570]" />
+        <button onClick={onClose} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted">
+          <X size={18} />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Full Name *</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-foreground">Full Name *</label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Enter client name"
-              className={`w-full px-4 py-3 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent ${
-                errors.name ? 'border-[#E5445A]' : 'border-[#EDE8E3]'
+              className={`h-9 w-full rounded-lg border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 ${
+                errors.name ? 'border-destructive/50 focus:ring-destructive/15' : 'border-border focus:ring-primary/15'
               }`}
             />
-            {errors.name && <p className="text-xs text-[#E5445A] mt-1">{errors.name}</p>}
+            {errors.name && <p className="mt-1 text-[11px] text-destructive">{errors.name}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Phone *</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-foreground">Phone *</label>
             <input
               type="tel"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="+1 (555) 123-4567"
-              className={`w-full px-4 py-3 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent ${
-                errors.phone ? 'border-[#E5445A]' : 'border-[#EDE8E3]'
+              className={`h-9 w-full rounded-lg border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 ${
+                errors.phone ? 'border-destructive/50 focus:ring-destructive/15' : 'border-border focus:ring-primary/15'
               }`}
             />
-            {errors.phone && <p className="text-xs text-[#E5445A] mt-1">{errors.phone}</p>}
+            {errors.phone && <p className="mt-1 text-[11px] text-destructive">{errors.phone}</p>}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Total Spent (PKR)</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-foreground">Total Spent (PKR)</label>
           <input
             type="number"
             value={form.totalSpent}
@@ -705,12 +679,12 @@ function ClientFormPanel({
             min="0"
             step="1"
             placeholder="0"
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Follow Up After (Days)</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-foreground">Follow Up After (Days)</label>
           <input
             type="number"
             value={form.followUpDays}
@@ -718,104 +692,102 @@ function ClientFormPanel({
             min="1"
             step="1"
             placeholder="e.g., 7"
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
-          <p className="text-xs text-[#6B6570] mt-1">
-            Dashboard will show this client one day before the follow-up date.
-          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Dashboard will remind you one day before follow-up.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Appointment Date</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-foreground">Appointment Date</label>
             <input
               type="date"
               value={form.appointmentDate}
               onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Appointment Time</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-foreground">Appointment Time</label>
             <input
               type="time"
               value={form.appointmentTime}
               onChange={(e) => setForm({ ...form, appointmentTime: e.target.value })}
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-3">Skin Type *</label>
-          {errors.skinType && <p className="text-xs text-[#E5445A] mb-2">{errors.skinType}</p>}
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <label className="mb-2 block text-[12px] font-medium text-foreground">Skin Type *</label>
+          {errors.skinType && <p className="mb-2 text-[11px] text-destructive">{errors.skinType}</p>}
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {skinTypes.map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setForm({ ...form, skinType: type })}
-                className={`p-3 rounded-lg border-2 transition-all text-center ${
-                  form.skinType === type ? 'border-current text-white' : 'border-[#EDE8E3] text-[#6B6570] hover:border-[#C9A96E]'
-                }`}
-                style={form.skinType === type ? { backgroundColor: skinTypeColors[type] } : {}}>
-                <div className="text-xl mb-1">{skinTypeEmojis[type]}</div>
-                <div className="text-xs font-medium">{type}</div>
+                className={`rounded-lg border px-2 py-2.5 text-center text-[12px] font-medium transition-colors ${
+                  form.skinType === type
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/30 hover:bg-secondary/40'
+                }`}>
+                {type}
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Skin Concerns</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-foreground">Skin Concerns</label>
           <input
             type="text"
             value={form.concerns}
             onChange={(e) => setForm({ ...form, concerns: e.target.value })}
             placeholder="e.g., Acne, Fine Lines, Pigmentation"
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
-          <p className="text-xs text-[#6B6570] mt-1">Separate multiple concerns with commas</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Separate multiple concerns with commas</p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Allergies</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-foreground">Allergies</label>
           <input
             type="text"
             value={form.allergies}
             onChange={(e) => setForm({ ...form, allergies: e.target.value })}
             placeholder="List any known allergies or 'None'"
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Notes</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-foreground">Notes</label>
           <textarea
             rows={3}
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder="Additional notes about the client..."
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
+            placeholder="Additional notes about the client…"
+            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
         </div>
 
-        <div className="flex gap-3 pt-2">
+        <div className="flex gap-2 border-t border-border pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-3 border-2 border-[#EDE8E3] rounded-lg font-medium text-[#6B6570] hover:bg-[#F8F5F0] transition-colors">
+            className="flex-1 rounded-lg border border-border bg-background py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted">
             Cancel
           </button>
           <button
             type="submit"
-            className="flex-1 py-3 rounded-lg font-semibold text-white transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
+            className="flex-1 rounded-lg bg-primary py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
             {initialData ? 'Save Changes' : 'Add Client'}
           </button>
         </div>
       </form>
-    </motion.div>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

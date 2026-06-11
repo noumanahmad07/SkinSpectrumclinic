@@ -26,7 +26,7 @@ export default function Login() {
 
     const success = login(email, password);
     if (!success) {
-      setError('Invalid credentials. Please use a @skinspectrum.com email.');
+      setError('Invalid email or password. Only active staff accounts can sign in.');
     }
   };
 

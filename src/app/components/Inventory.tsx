@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, ChevronDown, AlertTriangle, Package2, Clock3, ShieldAlert } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, AlertTriangle, ShieldAlert, Check, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Product {
@@ -68,10 +68,43 @@ const productCategories = ['Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs'
 
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
+function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-border bg-card shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+const stockBadgeStyles = {
+  'Out of Stock': 'bg-destructive/10 text-destructive',
+  'Low Stock': 'bg-[#F0A500]/10 text-[#A86F00]',
+  'In Stock': 'bg-[#2ECC8A]/10 text-[#159B61]',
+  Available: 'bg-[#2ECC8A]/10 text-[#159B61]',
+} as const;
+
+const stockToneClasses = {
+  out: 'text-destructive',
+  low: 'text-[#A86F00]',
+  ok: 'text-[#159B61]',
+} as const;
+
+const expiryBadgeStyles = {
+  Expired: 'bg-destructive/10 text-destructive',
+  'Near Expiry': 'bg-[#F0A500]/10 text-[#A86F00]',
+  Valid: 'bg-[#2ECC8A]/10 text-[#159B61]',
+  'No Expiry': 'bg-muted text-muted-foreground',
+} as const;
+
+const isUnlimitedStock = (item: Product) => item.unit === 'Service' || item.minStock >= 999;
+
 const getStockStatus = (item: Product) => {
-  if (item.stock <= 0) return { label: 'Out of Stock', color: '#E5445A', bg: '#E5445A14' };
-  if (item.stock <= item.minStock) return { label: 'Low Stock', color: '#F0A500', bg: '#F0A50014' };
-  return { label: 'In Stock', color: '#2ECC8A', bg: '#2ECC8A14' };
+  if (isUnlimitedStock(item)) {
+    return { label: 'Available' as const, tone: 'ok' as const, color: '#2ECC8A', bg: '#2ECC8A14' };
+  }
+  if (item.stock <= 0) return { label: 'Out of Stock' as const, tone: 'out' as const, color: '#E5445A', bg: '#E5445A14' };
+  if (item.stock <= item.minStock) return { label: 'Low Stock' as const, tone: 'low' as const, color: '#F0A500', bg: '#F0A50014' };
+  return { label: 'In Stock' as const, tone: 'ok' as const, color: '#2ECC8A', bg: '#2ECC8A14' };
 };
 
 const getExpiryStatus = (expiry: string) => {
@@ -106,7 +139,7 @@ export default function Inventory() {
         item.code.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (!filterCategory || item.category === filterCategory)
   );
-  const stockAlerts = inventory.filter((item) => item.stock <= item.minStock);
+  const stockAlerts = inventory.filter((item) => !isUnlimitedStock(item) && item.stock <= item.minStock);
   const expiryAlerts = inventory.filter((item) => {
     const expiryStatus = getExpiryStatus(item.expiry);
     return expiryStatus.label === 'Expired' || expiryStatus.label === 'Near Expiry';
@@ -148,351 +181,312 @@ export default function Inventory() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Success Toast */}
+    <div className="mx-auto flex max-w-[1400px] flex-col pb-3 lg:h-[calc(100vh-6.75rem)]">
       <AnimatePresence>
         {successMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 right-4 md:right-8 z-50 bg-[#2ECC8A] text-white px-6 py-3 rounded-lg shadow-lg font-medium">
-            ✓ {successMessage}
+            exit={{ opacity: 0, y: -12 }}
+            className="fixed right-4 top-20 z-50 flex items-center gap-2 rounded-lg border border-[#2ECC8A]/20 bg-card px-4 py-2.5 text-[13px] font-medium text-[#159B61] shadow-lg md:right-8">
+            <Check size={16} strokeWidth={2} />
+            {successMessage}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B6570]" size={20} />
+      {/* KPI row */}
+      <div className="mb-4 grid shrink-0 grid-cols-3 gap-3">
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <p className="text-[11px] text-muted-foreground">Total Products</p>
+          <p style={{ fontFamily: 'var(--font-heading)' }} className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+            {inventory.length}
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <p className="text-[11px] text-muted-foreground">Low / Out of Stock</p>
+          <p style={{ fontFamily: 'var(--font-heading)' }} className="mt-0.5 text-lg font-semibold tabular-nums text-[#A86F00]">
+            {stockAlerts.length}
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <p className="text-[11px] text-muted-foreground">Expiry Alerts</p>
+          <p style={{ fontFamily: 'var(--font-heading)' }} className="mt-0.5 text-lg font-semibold tabular-nums text-destructive">
+            {expiryAlerts.length}
+          </p>
+        </div>
+      </div>
+
+      {/* Toolbar + filters */}
+      <Panel className="mb-4 shrink-0 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} strokeWidth={1.75} />
             <input
               type="text"
-              placeholder="Search products by name or SKU..."
+              placeholder="Search products by name or SKU…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-white border border-[#EDE8E3] rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent shadow-sm"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 md:gap-3">
-          <div className="flex items-center bg-white border border-[#EDE8E3] rounded-lg p-1">
-            <button onClick={() => setViewMode('grid')}
-              className={`px-2.5 py-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-[#C9A96E] text-white' : 'text-[#6B6570] hover:bg-[#F8F5F0]'}`}>
-              <Grid3x3 size={16} />
-            </button>
-            <button onClick={() => setViewMode('table')}
-              className={`px-2.5 py-2 rounded-md transition-all ${viewMode === 'table' ? 'bg-[#C9A96E] text-white' : 'text-[#6B6570] hover:bg-[#F8F5F0]'}`}>
-              <List size={16} />
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`rounded-md p-1.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                title="Grid view">
+                <Grid3x3 size={15} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`rounded-md p-1.5 transition-colors ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                title="Table view">
+                <List size={15} strokeWidth={1.75} />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAddProduct(true)}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 sm:px-4">
+              <Plus size={16} strokeWidth={2} />
+              <span className="hidden sm:inline">Add Product</span>
+              <span className="sm:hidden">Add</span>
             </button>
           </div>
-          <button
-            onClick={() => setShowAddProduct(true)}
-            className="px-4 md:px-6 py-3 rounded-lg font-semibold text-white flex items-center gap-2
-              transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
-            <Plus size={18} />
-            <span className="hidden sm:inline">Add Product</span>
-            <span className="sm:hidden">Add</span>
-          </button>
         </div>
-      </div>
-
-      {/* Category Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setFilterCategory(null)}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-            filterCategory === null ? 'bg-[#C9A96E] text-white' : 'bg-white border border-[#EDE8E3] text-[#6B6570] hover:bg-[#F8F5F0]'
-          }`}>
-          All ({inventory.length})
-        </button>
-        {categories.map((cat) => (
-          <button key={cat} onClick={() => setFilterCategory(cat === filterCategory ? null : cat)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filterCategory === cat ? 'bg-[#C9A96E] text-white' : 'bg-white border border-[#EDE8E3] text-[#6B6570] hover:bg-[#F8F5F0]'
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilterCategory(null)}
+            className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+              filterCategory === null
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}>
-            {cat}
+            All ({inventory.length})
           </button>
-        ))}
-      </div>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setFilterCategory(cat === filterCategory ? null : cat)}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                filterCategory === cat
+                  ? 'bg-foreground text-background'
+                  : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}>
+              {cat}
+            </button>
+          ))}
+        </div>
+      </Panel>
 
+      {/* Compact alerts */}
       {(stockAlerts.length > 0 || expiryAlerts.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+        <Panel className="mb-4 shrink-0 divide-y divide-border p-0">
           {stockAlerts.length > 0 && (
-            <motion.div
-              className={`overflow-hidden rounded-2xl border border-[#F0A500]/30 bg-gradient-to-br from-[#FFF8E8] via-white to-[#FFF3D6] p-5 shadow-sm ${stockAlerts.length > 0 && expiryAlerts.length === 0 ? 'md:col-span-2' : ''}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-2xl bg-[#F0A500]/15 p-3 text-[#B97A00] shadow-sm">
-                    <AlertTriangle size={18} />
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#B97A00] font-semibold">Stock watch</p>
-                    <h3 className="mt-1 text-lg font-bold text-[#1A1025]">Restock attention needed</h3>
-                    <p className="mt-1 text-sm text-[#6B6570]">
-                      {stockAlerts.length} product{stockAlerts.length > 1 ? 's are' : ' is'} currently at or below the minimum stock level.
-                    </p>
-                  </div>
+            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F0A500]/10 text-[#A86F00]">
+                  <AlertTriangle size={14} strokeWidth={1.75} />
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className="rounded-full bg-[#F0A500] px-3 py-1 text-xs font-bold text-white shadow-sm">{stockAlerts.length} total</span>
-                  <div className="flex items-center gap-2 text-[11px] font-semibold text-[#6B6570]">
-                    <span className="rounded-full bg-[#E5445A]/10 px-2 py-1 text-[#E5445A]">Critical: {stockAlerts.filter((item) => item.stock === 0).length}</span>
-                    <span className="rounded-full bg-[#F0A500]/10 px-2 py-1 text-[#B97A00]">Low: {stockAlerts.filter((item) => item.stock > 0).length}</span>
-                  </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#A86F00]">Stock watch</p>
+                  <p className="text-[10px] text-muted-foreground">{stockAlerts.length} need restock</p>
                 </div>
+                <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+                  {stockAlerts.filter((item) => item.stock === 0).length} out
+                </span>
+                <span className="rounded-full bg-[#F0A500]/10 px-2 py-0.5 text-[10px] font-medium text-[#A86F00]">
+                  {stockAlerts.filter((item) => item.stock > 0).length} low
+                </span>
               </div>
-
-              <div className="mt-4 space-y-2">
-                {stockAlerts.slice(0, 5).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#EDE8E3] bg-white/90 px-3 py-2.5 shadow-sm">
-                    <div>
-                      <p className="text-sm font-semibold text-[#1A1025]">{item.name}</p>
-                      <p className="text-xs text-[#6B6570]">Current stock: {item.stock} / Min: {item.minStock}</p>
-                    </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.stock === 0 ? 'bg-[#E5445A]/10 text-[#E5445A]' : 'bg-[#F0A500]/10 text-[#B97A00]'}`}>
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                {stockAlerts.map((item) => (
+                  <span
+                    key={item.id}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
+                    <span className="max-w-[8rem] truncate font-medium text-foreground">{item.name}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {item.stock}/{item.minStock}
+                    </span>
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        item.stock === 0 ? 'bg-destructive/10 text-destructive' : 'bg-[#F0A500]/10 text-[#A86F00]'
+                      }`}>
                       {item.stock === 0 ? 'Out' : 'Low'}
                     </span>
-                  </div>
+                  </span>
                 ))}
               </div>
-            </motion.div>
+            </div>
           )}
-
           {expiryAlerts.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`overflow-hidden rounded-2xl border border-[#E5445A]/20 bg-gradient-to-br from-[#FFF1F3] via-white to-[#FFE8EC] p-5 shadow-sm ${expiryAlerts.length > 0 && stockAlerts.length === 0 ? 'md:col-span-2' : ''}`}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-2xl bg-[#E5445A]/10 p-3 text-[#C93850] shadow-sm">
-                    <ShieldAlert size={18} />
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#C93850] font-semibold">Expiry watch</p>
-                    <h3 className="mt-1 text-lg font-bold text-[#1A1025]">Review expiring products</h3>
-                    <p className="mt-1 text-sm text-[#6B6570]">
-                      {expiryAlerts.length} product{expiryAlerts.length > 1 ? 's need' : ' needs'} expiry review soon.
-                    </p>
-                  </div>
+            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                  <ShieldAlert size={14} strokeWidth={1.75} />
                 </div>
-                <span className="rounded-full bg-[#E5445A] px-3 py-1 text-xs font-bold text-white shadow-sm">{expiryAlerts.length}</span>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-[#EDE8E3] bg-white/90 p-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#6B6570]">Near expiry</div>
-                  <div className="mt-1 text-2xl font-bold text-[#1A1025]">{expiryAlerts.filter((item) => getExpiryStatus(item.expiry).label === 'Near Expiry').length}</div>
-                  <p className="text-xs text-[#6B6570]">Within 30 days</p>
-                </div>
-                <div className="rounded-xl border border-[#EDE8E3] bg-white/90 p-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#6B6570]">Expired</div>
-                  <div className="mt-1 text-2xl font-bold text-[#1A1025]">{expiryAlerts.filter((item) => getExpiryStatus(item.expiry).label === 'Expired').length}</div>
-                  <p className="text-xs text-[#6B6570]">Needs immediate action</p>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-destructive">Expiry watch</p>
+                  <p className="text-[10px] text-muted-foreground">{expiryAlerts.length} need review</p>
                 </div>
               </div>
-
-              <div className="mt-4 space-y-2">
-                {expiryAlerts.slice(0, 5).map((item) => {
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                {expiryAlerts.map((item) => {
                   const expiryStatus = getExpiryStatus(item.expiry);
                   return (
-                    <div key={item.id} className="flex items-center justify-between rounded-xl border border-[#EDE8E3] bg-white/90 px-3 py-2.5 shadow-sm">
-                      <div>
-                        <p className="text-sm font-semibold text-[#1A1025]">{item.name}</p>
-                        <p className="text-xs text-[#6B6570]">{item.expiry || 'No expiry date set'}</p>
-                      </div>
-                      <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ color: expiryStatus.color, backgroundColor: expiryStatus.bg }}>
+                    <span
+                      key={item.id}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
+                      <span className="max-w-[8rem] truncate font-medium text-foreground">{item.name}</span>
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${expiryBadgeStyles[expiryStatus.label as keyof typeof expiryBadgeStyles] || expiryBadgeStyles['No Expiry']}`}>
                         {expiryStatus.label}
                       </span>
-                    </div>
+                    </span>
                   );
                 })}
               </div>
-            </motion.div>
-          )}
-        </div>
-      )}
-
-      {/* Grid View */}
-      {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-          {filteredInventory.map((item) => (
-            (() => {
-              const stockStatus = getStockStatus(item);
-              const expiryStatus = getExpiryStatus(item.expiry);
-              return (
-            <div key={item.id}
-              className="bg-white rounded-[14px] p-4 md:p-5 border border-[#EDE8E3] hover:border-[#C9A96E] hover:shadow-lg transition-all"
-              style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-              <div className="text-4xl md:text-5xl mb-3 md:mb-4 text-center py-4 md:py-6 rounded-lg"
-                style={{ background: 'linear-gradient(135deg, #F8F5F0 0%, #F5ECD7 100%)' }}>
-                {item.image}
-              </div>
-
-              <div className="mb-3">
-                <div className="flex items-start justify-between mb-1">
-                  <h3 className="font-semibold text-[#1A1025] text-sm leading-tight flex-1 pr-2">{item.name}</h3>
-                  <button
-                    onClick={() => toggleStatus(item.id)}
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${
-                      item.status === 'Active' ? 'bg-[#2ECC8A]/10 text-[#2ECC8A]' : 'bg-[#6B6570]/10 text-[#6B6570]'
-                    }`}>
-                    {item.status}
-                  </button>
-                </div>
-                <p style={{ fontFamily: 'var(--font-mono)' }} className="text-xs text-[#6B6570] mb-0.5">{item.code}</p>
-                <p className="text-xs text-[#6B6570]">{item.category}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="px-2 py-1 rounded-full text-[11px] font-semibold" style={{ color: stockStatus.color, backgroundColor: stockStatus.bg }}>
-                    {stockStatus.label}
-                  </span>
-                  <span className="px-2 py-1 rounded-full text-[11px] font-semibold" style={{ color: expiryStatus.color, backgroundColor: expiryStatus.bg }}>
-                    {expiryStatus.label}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="text-xs text-[#6B6570]">Sell Price</div>
-                  <div style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-bold text-[#C9A96E]">
-                    {formatCurrency(item.sellPrice)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-[#6B6570]">Cost</div>
-                  <div className="text-sm font-semibold text-[#6B6570]">{formatCurrency(item.costPrice)}</div>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5 text-xs">
-                  <span className="text-[#6B6570]">Stock: <strong>{item.stock}</strong></span>
-                  <span className="text-[#6B6570]">Min: {item.minStock}</span>
-                </div>
-                <div className="h-1.5 bg-[#EDE8E3] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      item.stock === 0 ? 'bg-[#E5445A]' : item.stock < item.minStock ? 'bg-[#F0A500]' : 'bg-[#2ECC8A]'
-                    }`}
-                    style={{ width: `${Math.min((item.stock / (item.minStock || 1)) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button onClick={() => setEditProduct(item)}
-                  className="flex-1 px-3 py-2 bg-[#F8F5F0] hover:bg-[#C9A96E] hover:text-white
-                    rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5">
-                  <Edit size={13} />Edit
-                </button>
-                <button onClick={() => setDeleteConfirm(item.id)}
-                  className="px-3 py-2 bg-[#F8F5F0] hover:bg-[#E5445A] hover:text-white rounded-lg transition-all">
-                  <Trash2 size={13} />
-                </button>
-              </div>
             </div>
-              );
-            })()
-          ))}
-        </div>
+          )}
+        </Panel>
       )}
 
-      {/* Table View */}
-      {viewMode === 'table' && (
-        <div className="bg-white rounded-[14px] overflow-hidden"
-          style={{ boxShadow: '0 4px 20px rgba(26, 16, 37, 0.08)' }}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
-              <thead className="bg-[#F8F5F0] border-b border-[#EDE8E3]">
-                <tr>
-                  {['Code', 'Name', 'Category', 'Cost', 'Sell Price', 'Stock', 'Expiry', 'Status', 'Actions'].map((h) => (
-                    <th key={h} className="text-left py-3 px-3 text-xs font-semibold text-[#6B6570] uppercase tracking-wider">
-                      {h}
-                    </th>
-                  ))}
+      {/* Products */}
+      <Panel className="min-h-0 flex-1 overflow-hidden p-0">
+        {filteredInventory.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground/50">
+              <Package size={22} strokeWidth={1.5} />
+            </div>
+            <p className="text-[14px] font-medium text-foreground">No products found</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="h-full overflow-y-auto scroll-area p-3 md:p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredInventory.map((item) => (
+                <ProductCard
+                  key={item.id}
+                  item={item}
+                  onEdit={() => setEditProduct(item)}
+                  onDelete={() => setDeleteConfirm(item.id)}
+                  onToggleStatus={() => toggleStatus(item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="h-full overflow-x-hidden overflow-y-auto scroll-area">
+            <table className="w-full table-fixed">
+              <thead className="sticky top-0 z-10 bg-card">
+                <tr className="border-b border-border bg-card">
+                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Code</th>
+                  <th className="w-[20%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Product</th>
+                  <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Category</th>
+                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Cost</th>
+                  <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sell</th>
+                  <th className="w-[13%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Stock</th>
+                  <th className="w-[14%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Expiry</th>
+                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="w-[6%] bg-card px-2 py-2.5" aria-label="Actions" />
                 </tr>
               </thead>
-              <tbody>
-                {filteredInventory.map((item, idx) => {
+              <tbody className="bg-card">
+                {filteredInventory.map((item) => {
                   const stockStatus = getStockStatus(item);
                   const expiryStatus = getExpiryStatus(item.expiry);
                   return (
-                  <tr key={item.id}
-                    className={`border-b border-[#EDE8E3]/50 hover:bg-[#F8F5F0] transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F5F0]/30'}`}>
-                    <td className="py-3 px-3">
-                      <span style={{ fontFamily: 'var(--font-mono)' }} className="text-xs font-medium text-[#C9A96E]">{item.code}</span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{item.image}</span>
-                        <span className="text-sm font-medium text-[#1A1025]">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-sm text-[#6B6570]">{item.category}</td>
-                    <td className="py-3 px-3 text-sm text-[#6B6570]">{formatCurrency(item.costPrice)}</td>
-                    <td className="py-3 px-3">
-                      <span style={{ fontFamily: 'var(--font-heading)' }} className="text-sm font-bold text-[#C9A96E]">
-                        {formatCurrency(item.sellPrice)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className={`text-sm font-semibold ${
-                        item.stock === 0 ? 'text-[#E5445A]' : item.stock < item.minStock ? 'text-[#F0A500]' : 'text-[#2ECC8A]'
-                      }`}>
-                        {item.stock}
-                      </span>
-                      <div className="text-[11px] font-semibold mt-0.5" style={{ color: stockStatus.color }}>
-                        {stockStatus.label}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="text-sm text-[#1A1025]">{item.expiry || 'None'}</div>
-                      <div className="text-[11px] font-semibold mt-0.5" style={{ color: expiryStatus.color }}>
-                        {expiryStatus.label}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <button onClick={() => toggleStatus(item.id)}
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          item.status === 'Active' ? 'bg-[#2ECC8A]/10 text-[#2ECC8A]' : 'bg-[#6B6570]/10 text-[#6B6570]'
-                        }`}>
-                        {item.status}
-                      </button>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex gap-2">
-                        <button onClick={() => setEditProduct(item)} className="text-[#C9A96E] hover:text-[#A07840] transition-colors">
-                          <Edit size={15} />
+                    <tr key={item.id} className="border-b border-border/60 bg-card transition-colors last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <span style={{ fontFamily: 'var(--font-mono)' }} className="text-[11px] font-medium text-primary">
+                          {item.code}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary text-base">{item.image}</span>
+                          <span className="truncate text-[13px] font-medium text-foreground">{item.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-[12px] text-muted-foreground">{item.category}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-[12px] tabular-nums text-muted-foreground">{formatCurrency(item.costPrice)}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span style={{ fontFamily: 'var(--font-heading)' }} className="text-[12px] font-semibold tabular-nums text-primary">
+                          {formatCurrency(item.sellPrice)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className={`shrink-0 text-[12px] font-semibold tabular-nums ${stockToneClasses[stockStatus.tone]}`}>
+                            {isUnlimitedStock(item) ? '∞' : item.stock}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+                              stockBadgeStyles[stockStatus.label as keyof typeof stockBadgeStyles]
+                            }`}>
+                            {stockStatus.label}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                            {item.expiry
+                              ? new Date(item.expiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                              : '—'}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+                              expiryBadgeStyles[expiryStatus.label as keyof typeof expiryBadgeStyles]
+                            }`}>
+                            {expiryStatus.label}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleStatus(item.id)}
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            item.status === 'Active' ? 'bg-[#2ECC8A]/10 text-[#159B61]' : 'bg-muted text-muted-foreground'
+                          }`}>
+                          {item.status}
                         </button>
-                        <button onClick={() => setDeleteConfirm(item.id)} className="text-[#E5445A] hover:text-[#C93850] transition-colors">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditProduct(item)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+                            title="Edit">
+                            <Edit size={14} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirm(item.id)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            title="Delete">
+                            <Trash2 size={14} strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {filteredInventory.length === 0 && (
-        <div className="text-center py-16">
-          <div className="text-6xl mb-4">📦</div>
-          <p className="text-[#6B6570] text-lg">No products found</p>
-          <p className="text-sm text-[#6B6570] mt-2">Try adjusting your search or filters</p>
-        </div>
-      )}
+        )}
+      </Panel>
 
       {/* Delete Confirm Modal */}
       <AnimatePresence>
@@ -549,6 +543,100 @@ export default function Inventory() {
   );
 }
 
+function ProductCard({
+  item,
+  onEdit,
+  onDelete,
+  onToggleStatus,
+}: {
+  item: Product;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleStatus: () => void;
+}) {
+  const stockStatus = getStockStatus(item);
+  const expiryStatus = getExpiryStatus(item.expiry);
+  const stockPercent = Math.min((item.stock / (item.minStock || 1)) * 100, 100);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors hover:border-primary/30">
+      <div className="flex gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-secondary text-2xl">{item.image}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="truncate text-[13px] font-semibold text-foreground">{item.name}</h3>
+            <button
+              type="button"
+              onClick={onToggleStatus}
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                item.status === 'Active' ? 'bg-[#2ECC8A]/10 text-[#159B61]' : 'bg-muted text-muted-foreground'
+              }`}>
+              {item.status}
+            </button>
+          </div>
+          <p style={{ fontFamily: 'var(--font-mono)' }} className="text-[10px] text-muted-foreground">
+            {item.code} · {item.category}
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${stockBadgeStyles[stockStatus.label as keyof typeof stockBadgeStyles]}`}>
+              {stockStatus.label}
+            </span>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${expiryBadgeStyles[expiryStatus.label as keyof typeof expiryBadgeStyles]}`}>
+              {expiryStatus.label}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <p className="text-muted-foreground">Sell</p>
+          <p style={{ fontFamily: 'var(--font-heading)' }} className="font-semibold tabular-nums text-primary">
+            {formatCurrency(item.sellPrice)}
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Stock</p>
+          <p className={`font-semibold tabular-nums ${stockToneClasses[stockStatus.tone]}`}>
+            {isUnlimitedStock(item) ? '∞' : item.stock}
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Min</p>
+          <p className="font-semibold tabular-nums text-muted-foreground">{item.minStock}</p>
+        </div>
+      </div>
+
+      <div className="mt-2">
+        <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div
+            className={`h-full rounded-full transition-all ${
+              stockStatus.tone === 'out' ? 'bg-destructive' : stockStatus.tone === 'low' ? 'bg-[#F0A500]' : 'bg-[#2ECC8A]'
+            }`}
+            style={{ width: `${isUnlimitedStock(item) ? 100 : stockPercent}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex gap-1.5">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-primary">
+          <Edit size={12} strokeWidth={1.75} />
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-lg border border-border px-2.5 py-1.5 text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive">
+          <Trash2 size={12} strokeWidth={1.75} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProductFormModal({
   product,
   onClose,
@@ -571,7 +659,12 @@ function ProductFormModal({
     status: product?.status || 'Active' as 'Active' | 'Inactive',
     image: product?.image || '💧',
   });
-  const [categoryOpen, setCategoryOpen] = useState(false);
+
+  const labelClass = 'mb-1.5 block text-[12px] font-medium text-foreground';
+  const fieldClass =
+    'h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15';
+  const sectionClass = 'space-y-3 rounded-lg border border-border bg-muted/20 p-3.5';
+  const sectionTitleClass = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -599,205 +692,201 @@ function ProductFormModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}>
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 25 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 32, mass: 0.95 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-t-[24px] sm:rounded-[14px] w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto"
-        style={{ boxShadow: '0 20px 60px rgba(26, 16, 37, 0.3)' }}>
-      <div className="sm:hidden flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-[#EDE8E3] rounded-full" />
-      </div>
-      <div className="sticky top-0 bg-white border-b border-[#EDE8E3] p-4 md:p-6 flex items-center justify-between z-10">
-        <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-xl md:text-2xl font-bold text-[#1A1025]">
-          {product ? 'Edit Product' : 'Add New Product'}
-        </h2>
-        <button onClick={onClose} className="p-2 hover:bg-[#F8F5F0] rounded-lg transition-colors">
-          <X size={22} className="text-[#6B6570]" />
-        </button>
-      </div>
-
-      <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
-        {/* Emoji Picker */}
-        <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Product Icon</label>
-          <div className="flex gap-2 flex-wrap">
-            {productEmojis.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => setForm({ ...form, image: emoji })}
-                className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all ${
-                  form.image === emoji ? 'bg-[#C9A96E] ring-2 ring-[#C9A96E] ring-offset-2' : 'bg-[#F8F5F0] hover:bg-[#EDE8E3]'
-                }`}>
-                {emoji}
-              </button>
-            ))}
+        className="w-full will-change-transform sm:max-w-2xl">
+        <div className="max-h-[92vh] overflow-y-auto scroll-area rounded-t-2xl border border-border bg-card shadow-xl sm:rounded-xl">
+          <div className="flex justify-center pt-3 pb-1 sm:hidden">
+            <div className="h-1 w-8 rounded-full bg-border" />
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Product Name *</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              placeholder="e.g., Hydrating Serum"
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-            />
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3.5 md:px-5">
+            <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-semibold text-foreground">
+              {product ? 'Edit Product' : 'Add New Product'}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted">
+              <X size={18} />
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Category</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setCategoryOpen((open) => !open)}
-                className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent flex items-center justify-between gap-3 text-left">
-                <span className={form.category ? 'text-[#1A1025]' : 'text-[#8D8792]'}>
-                  {form.category || 'Select category'}
-                </span>
-                <ChevronDown size={18} className={`text-[#6B6570] transition-transform ${categoryOpen ? 'rotate-180' : ''}`} />
-              </button>
 
-              {categoryOpen && (
-                <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 max-h-44 overflow-y-auto rounded-lg border border-[#EDE8E3] bg-white shadow-xl">
-                  {productCategories.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => {
-                        setForm({ ...form, category });
-                        setCategoryOpen(false);
-                      }}
-                      className={`w-full px-4 py-3 text-left text-sm transition-colors ${
-                        form.category === category
-                          ? 'bg-[#C9A96E] text-white font-semibold'
-                          : 'text-[#1A1025] hover:bg-[#F8F5F0]'
-                      }`}>
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              )}
+          <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+            {/* Icon picker */}
+            <div className={sectionClass}>
+              <p className={sectionTitleClass}>Product Icon</p>
+              <div className="flex flex-wrap gap-1.5">
+                {productEmojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setForm({ ...form, image: emoji })}
+                    className={`flex h-9 w-9 items-center justify-center rounded-lg border text-base transition-colors ${
+                      form.image === emoji
+                        ? 'border-primary bg-secondary ring-1 ring-primary/30'
+                        : 'border-border bg-background hover:bg-muted/50'
+                    }`}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Description</label>
-          <textarea
-            rows={2}
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Brief product description..."
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-          />
-        </div>
+            {/* Basic info */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Product Name *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  required
+                  placeholder="e.g., Hydrating Serum"
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Category</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  className={fieldClass}>
+                  <option value="">Select category</option>
+                  {productCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Cost Price (PKR)</label>
-            <input
-              type="number"
-              value={form.costPrice}
-              onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Sell Price (PKR) *</label>
-            <input
-              type="number"
-              value={form.sellPrice}
-              onChange={(e) => setForm({ ...form, sellPrice: e.target.value })}
-              required
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-            />
-          </div>
-        </div>
+            <div>
+              <label className={labelClass}>Description</label>
+              <textarea
+                rows={2}
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Brief product description..."
+                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Stock</label>
-            <input
-              type="number"
-              value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
-              min="0"
-              placeholder="0"
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Min Stock</label>
-            <input
-              type="number"
-              value={form.minStock}
-              onChange={(e) => setForm({ ...form, minStock: e.target.value })}
-              min="0"
-              placeholder="10"
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Unit</label>
-            <select
-              value={form.unit}
-              onChange={(e) => setForm({ ...form, unit: e.target.value })}
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent">
-              {['Bottle', 'Jar', 'Tube', 'Sachet', 'Service'].map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[#1A1025] mb-2">Status</label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value as 'Active' | 'Inactive' })}
-              className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent">
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-          </div>
-        </div>
+            {/* Pricing */}
+            <div className={sectionClass}>
+              <p className={sectionTitleClass}>Pricing</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>Cost Price (PKR)</label>
+                  <input
+                    type="number"
+                    value={form.costPrice}
+                    onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className={fieldClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Sell Price (PKR) *</label>
+                  <input
+                    type="number"
+                    value={form.sellPrice}
+                    onChange={(e) => setForm({ ...form, sellPrice: e.target.value })}
+                    required
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium text-[#1A1025] mb-2">Expiry Date</label>
-          <input
-            type="date"
-            value={form.expiry}
-            onChange={(e) => setForm({ ...form, expiry: e.target.value })}
-            className="w-full px-4 py-3 bg-white border border-[#EDE8E3] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C9A96E] focus:border-transparent"
-          />
-        </div>
+            {/* Inventory */}
+            <div className={sectionClass}>
+              <p className={sectionTitleClass}>Inventory</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <label className={labelClass}>Stock</label>
+                  <input
+                    type="number"
+                    value={form.stock}
+                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                    min="0"
+                    placeholder="0"
+                    className={fieldClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Min Stock</label>
+                  <input
+                    type="number"
+                    value={form.minStock}
+                    onChange={(e) => setForm({ ...form, minStock: e.target.value })}
+                    min="0"
+                    placeholder="10"
+                    className={fieldClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Unit</label>
+                  <select
+                    value={form.unit}
+                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    className={fieldClass}>
+                    {['Bottle', 'Jar', 'Tube', 'Sachet', 'Service'].map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value as 'Active' | 'Inactive' })}
+                    className={fieldClass}>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
-        <div className="flex gap-3 pt-2">
-          <button type="button" onClick={onClose}
-            className="flex-1 py-3 border-2 border-[#EDE8E3] rounded-lg font-medium text-[#6B6570] hover:bg-[#F8F5F0] transition-colors">
-            Cancel
-          </button>
-          <button type="submit"
-            className="flex-1 py-3 rounded-lg font-semibold text-white transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
-            <Save size={16} />
-            {product ? 'Save Changes' : 'Add Product'}
-          </button>
+            <div>
+              <label className={labelClass}>Expiry Date</label>
+              <input
+                type="date"
+                value={form.expiry}
+                onChange={(e) => setForm({ ...form, expiry: e.target.value })}
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="flex gap-2 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-lg border border-border py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-[13px] font-semibold text-background transition-opacity hover:opacity-90">
+                <Save size={15} strokeWidth={1.75} />
+                {product ? 'Save Changes' : 'Add Product'}
+              </button>
+            </div>
+          </form>
         </div>
-      </form>
-    </motion.div>
+      </motion.div>
     </motion.div>
   );
 }

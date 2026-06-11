@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, Navigate, useLocation } from 'react-router';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -15,7 +15,6 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../App';
 import ssaLogo from '../../assets/ssa-logo.png';
@@ -28,13 +27,13 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, section: 'Main' },
-  { label: 'Clients', path: '/clients', icon: <Users size={20} />, section: 'Main' },
-  { label: 'POS', path: '/pos', icon: <ShoppingCart size={20} />, section: 'Main' },
-  { label: 'Billing', path: '/billing', icon: <Receipt size={20} />, section: 'Finance' },
-  { label: 'Inventory', path: '/inventory', icon: <Package size={20} />, section: 'System' },
-  { label: 'Reports', path: '/reports', icon: <BarChart3 size={20} />, section: 'System' },
-  { label: 'Settings', path: '/settings', icon: <Settings size={20} />, section: 'System' },
+  { label: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} strokeWidth={1.75} />, section: 'Main' },
+  { label: 'Clients', path: '/clients', icon: <Users size={18} strokeWidth={1.75} />, section: 'Main' },
+  { label: 'POS', path: '/pos', icon: <ShoppingCart size={18} strokeWidth={1.75} />, section: 'Main' },
+  { label: 'Billing', path: '/billing', icon: <Receipt size={18} strokeWidth={1.75} />, section: 'Finance' },
+  { label: 'Inventory', path: '/inventory', icon: <Package size={18} strokeWidth={1.75} />, section: 'System' },
+  { label: 'Reports', path: '/reports', icon: <BarChart3 size={18} strokeWidth={1.75} />, section: 'System' },
+  { label: 'Settings', path: '/settings', icon: <Settings size={18} strokeWidth={1.75} />, section: 'System' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -53,204 +52,195 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ? 'Notifications'
     : navigation.find((n) => n.path === location.pathname)?.label || 'Dashboard';
 
+  if (user?.mustChangePassword && location.pathname !== '/settings') {
+    return <Navigate to="/settings?tab=security" replace />;
+  }
+
   const SidebarContent = ({ onNavClick, forceExpanded = false }: { onNavClick?: () => void; forceExpanded?: boolean }) => {
     const isCollapsed = collapsed && !forceExpanded;
 
     return (
-    <>
-      <div className="p-5 flex items-center justify-between border-b border-white/10">
-        {!isCollapsed ? (
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-black shadow-[0_14px_32px_rgba(201,169,110,0.24)]">
+      <>
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-5">
+          {!isCollapsed ? (
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-black/40 ring-1 ring-white/10">
+                <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
+              </div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-heading)' }} className="text-[15px] font-semibold leading-tight text-[#E8C98A]">
+                  SkinSpectrum
+                </div>
+                <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#F5ECD7]/45">
+                  Esthetics Studio
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-black/40 ring-1 ring-white/10">
               <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
-            <div>
-              <div style={{ fontFamily: 'var(--font-heading)' }}
-                className="font-bold text-xl leading-none text-[#F2D794]">SkinSpectrum</div>
-              <div className="mt-1 text-xs tracking-[0.14em] uppercase text-[#F5ECD7]/52">Esthetics Studio</div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto overflow-hidden bg-black">
-            <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <nav className="flex-1 px-3 py-6 overflow-y-auto">
-        {Object.entries(groupedNav).map(([section, items]) => (
-          <div key={section} className="mb-6">
-            {!isCollapsed && (
-              <div className="px-3 mb-2 text-[11px] font-bold text-[#F5ECD7]/42 uppercase tracking-[0.18em]">
-                {section}
-              </div>
-            )}
-            <div className="space-y-1">
-              {items.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={onNavClick}
-                    className={`relative flex items-center gap-3 px-3 py-3 rounded-lg transition-all
-                      ${
+        <nav className="flex-1 overflow-y-auto scroll-area px-3 py-5">
+          {Object.entries(groupedNav).map(([section, items]) => (
+            <div key={section} className="mb-5">
+              {!isCollapsed && (
+                <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F5ECD7]/35">
+                  {section}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                {items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={onNavClick}
+                      className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] transition-colors ${
                         isActive
-                          ? 'bg-white/[0.09] text-[#F2D794] shadow-[inset_3px_0_0_#D1AD69]'
-                          : 'text-[#F5ECD7]/72 hover:bg-white/[0.055] hover:text-[#F2D794]'
+                          ? 'bg-white/[0.08] font-medium text-[#E8C98A]'
+                          : 'text-[#F5ECD7]/65 hover:bg-white/[0.04] hover:text-[#F5ECD7]'
                       }`}
-                    title={isCollapsed ? item.label : undefined}>
-                    <span className={isActive ? 'text-[#F2D794]' : 'text-[#F5ECD7]/64'}>{item.icon}</span>
-                    {!isCollapsed && <span className="font-semibold">{item.label}</span>}
-                  </Link>
-                );
-              })}
+                      title={isCollapsed ? item.label : undefined}>
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#C9A96E]" />
+                      )}
+                      <span className={isActive ? 'text-[#E8C98A]' : 'text-[#F5ECD7]/50'}>{item.icon}</span>
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
-      </nav>
+          ))}
+        </nav>
 
-      <div className="p-4 border-t border-white/10">
-        {!isCollapsed ? (
-          <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.055] p-3">
-            <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-[#D1AD69] flex items-center justify-center text-[#1A1025] font-bold shadow-[0_10px_24px_rgba(209,173,105,0.22)]">
+        <div className="border-t border-white/[0.06] p-4">
+          {!isCollapsed ? (
+            <div className="mb-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#C9A96E] text-xs font-semibold text-[#1A1025]">
+                  {user?.name.charAt(0)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-medium text-[#F5ECD7]">{user?.name}</div>
+                  <div className="truncate text-[11px] text-[#F5ECD7]/50">{user?.role}</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-[#C9A96E] text-xs font-semibold text-[#1A1025]">
               {user?.name.charAt(0)}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm text-[#F5ECD7] truncate">{user?.name}</div>
-              <div className="text-xs text-[#F5ECD7]/60 truncate">{user?.role}</div>
-            </div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-11 h-11 rounded-full bg-[#D1AD69] flex items-center justify-center text-[#1A1025] font-bold mx-auto mb-3">
-            {user?.name.charAt(0)}
-          </div>
-        )}
-        <button
-          onClick={logout}
-          className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg
-            bg-white/[0.08] hover:bg-[#E5445A] text-[#F5ECD7] transition-colors
-            ${isCollapsed ? 'justify-center' : ''}`}
-          title={isCollapsed ? 'Logout' : undefined}>
-          <LogOut size={18} />
-          {!isCollapsed && <span className="font-medium">Logout</span>}
-        </button>
-      </div>
-    </>
+          )}
+          <button
+            onClick={logout}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-[#F5ECD7]/70 transition-colors hover:bg-white/[0.06] hover:text-[#F5ECD7] ${
+              isCollapsed ? 'justify-center' : ''
+            }`}
+            title={isCollapsed ? 'Logout' : undefined}>
+            <LogOut size={16} strokeWidth={1.75} />
+            {!isCollapsed && <span>Logout</span>}
+          </button>
+        </div>
+      </>
     );
   };
 
   return (
-    <div className="flex h-screen bg-[#F5EFE6] overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       {mobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 text-[#F5ECD7] flex flex-col
-          transition-transform duration-300 lg:hidden
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{
-          background: 'linear-gradient(180deg, #140A1F 0%, #21152D 58%, #160D20 100%)',
-          boxShadow: '4px 0 20px rgba(26, 16, 37, 0.3)'
-        }}>
+        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-[#1A1025] text-[#F5ECD7] transition-transform duration-300 lg:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-4 p-2 rounded-lg bg-white/10 text-[#F5ECD7] hover:bg-[#E5445A] transition-colors">
+          className="absolute right-3 top-4 rounded-lg p-2 text-[#F5ECD7]/70 transition-colors hover:bg-white/[0.06] hover:text-[#F5ECD7]">
           <X size={18} />
         </button>
         <SidebarContent forceExpanded onNavClick={() => setMobileOpen(false)} />
       </aside>
 
       <aside
-        className={`relative hidden lg:flex flex-col text-[#F5ECD7] transition-all duration-300 ${
-          collapsed ? 'w-20' : 'w-[280px]'
-        }`}
-        style={{
-          background: 'linear-gradient(180deg, #140A1F 0%, #21152D 58%, #160D20 100%)',
-          boxShadow: '8px 0 34px rgba(26, 16, 37, 0.14)'
-        }}>
+        className={`relative hidden flex-col bg-[#1A1025] text-[#F5ECD7] transition-all duration-300 lg:flex ${
+          collapsed ? 'w-[72px]' : 'w-[260px]'
+        }`}>
         <SidebarContent />
 
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-24 w-7 h-7 rounded-full bg-[#D1AD69]
-            flex items-center justify-center text-[#1A1025] shadow-lg hover:scale-110 transition-transform z-10">
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          className="absolute -right-3 top-[88px] z-10 flex h-6 w-6 items-center justify-center rounded-full border border-[#EDE8E3]/20 bg-[#2D1F3D] text-[#E8C98A] shadow-md transition-transform hover:scale-105">
+          {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="bg-white/86 backdrop-blur border-b border-[#E8DFD4] px-4 md:px-8 py-4"
-          style={{ boxShadow: '0 10px 32px rgba(26, 16, 37, 0.05)' }}>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="border-b border-border bg-card/80 px-4 py-3 backdrop-blur-md md:px-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobileOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-[#F8F5F0] transition-colors">
-                <Menu size={22} className="text-[#1A1025]" />
+                className="rounded-lg p-2 transition-colors hover:bg-muted lg:hidden">
+                <Menu size={20} className="text-foreground" />
               </button>
               <div>
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#A67F3F]">
-                  <Sparkles size={14} />
+                <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
                   Skin Spectrum
-                </div>
-                <h1 style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-2xl md:text-3xl font-bold leading-tight text-[#1A1025]">
+                </p>
+                <h1
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                  className="text-xl font-semibold leading-tight text-foreground md:text-[22px]">
                   {currentPage}
                 </h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex items-center gap-2 md:gap-3">
               <div className="relative hidden md:block">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8390]" size={19} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} strokeWidth={1.75} />
                 <input
                   type="text"
-                  placeholder="Search clients, invoices, products"
-                  className="h-12 pl-12 pr-4 w-64 lg:w-96 xl:w-[440px] bg-[#F7F2EA] border border-[#E8DFD4] rounded-lg
-                    focus:outline-none focus:ring-4 focus:ring-[#C9A96E]/18 focus:border-[#C9A96E] transition-all"
+                  placeholder="Search clients, invoices, products…"
+                  className="h-9 w-64 rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 transition-colors focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 lg:w-80"
                 />
               </div>
 
               <Link
                 to="/notifications"
                 title="Notifications"
-                className={`relative h-11 w-11 flex items-center justify-center rounded-lg transition-colors ${
-                  location.pathname === '/notifications'
-                    ? 'bg-[#F7EFE1] text-[#A67F3F]'
-                    : 'hover:bg-[#F8F5F0]'
+                className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+                  location.pathname === '/notifications' ? 'bg-secondary text-primary' : 'hover:bg-muted'
                 }`}>
-                <Bell size={20} className="text-[#6B6570]" />
-                <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-[#E5445A] rounded-full ring-2 ring-white" />
+                <Bell size={18} strokeWidth={1.75} className="text-muted-foreground" />
+                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-card" />
               </Link>
 
-              <div className="w-11 h-11 rounded-full bg-[#D1AD69] flex items-center justify-center text-[#1A1025] font-bold text-sm shadow-[0_10px_24px_rgba(209,173,105,0.2)]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                 {user?.name.charAt(0)}
               </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 pb-20 lg:pb-8">
+        <main className="scroll-area flex-1 overflow-auto p-4 md:p-6 lg:p-7 pb-20 lg:pb-7">
           {children}
         </main>
 
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#140A1F] border-t border-white/10 z-30"
-          style={{ boxShadow: '0 -4px 20px rgba(26, 16, 37, 0.2)' }}>
-          <div className="flex items-center justify-around px-2 py-2">
+        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/[0.06] bg-[#1A1025] lg:hidden">
+          <div className="flex items-center justify-around px-1 py-1.5">
             {[
-              { label: 'Home', path: '/', icon: <LayoutDashboard size={22} /> },
-              { label: 'POS', path: '/pos', icon: <ShoppingCart size={22} /> },
-              { label: 'Clients', path: '/clients', icon: <Users size={22} /> },
-              { label: 'Billing', path: '/billing', icon: <Receipt size={22} /> },
-              { label: 'More', path: null, icon: <Menu size={22} />, isMenu: true },
+              { label: 'Home', path: '/', icon: <LayoutDashboard size={20} strokeWidth={1.75} /> },
+              { label: 'POS', path: '/pos', icon: <ShoppingCart size={20} strokeWidth={1.75} /> },
+              { label: 'Clients', path: '/clients', icon: <Users size={20} strokeWidth={1.75} /> },
+              { label: 'Billing', path: '/billing', icon: <Receipt size={20} strokeWidth={1.75} /> },
+              { label: 'More', path: null, icon: <Menu size={20} strokeWidth={1.75} />, isMenu: true },
             ].map((item) => {
               const isActive = item.path && location.pathname === item.path;
               if (item.isMenu) {
@@ -258,7 +248,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <button
                     key="more"
                     onClick={() => setMobileOpen(true)}
-                    className="flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-all text-[#F5ECD7]/60 hover:text-[#C9A96E]">
+                    className="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[#F5ECD7]/50 transition-colors hover:text-[#C9A96E]">
                     {item.icon}
                     <span className="text-[10px] font-medium">{item.label}</span>
                   </button>
@@ -268,8 +258,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link
                   key={item.path}
                   to={item.path!}
-                  className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-all ${
-                    isActive ? 'text-[#C9A96E]' : 'text-[#F5ECD7]/60 hover:text-[#C9A96E]'
+                  className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors ${
+                    isActive ? 'text-[#C9A96E]' : 'text-[#F5ECD7]/50 hover:text-[#C9A96E]'
                   }`}>
                   {item.icon}
                   <span className="text-[10px] font-medium">{item.label}</span>

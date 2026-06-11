@@ -14,11 +14,22 @@ import {
   X,
   Phone,
   Mail,
-  Wallet
+  Wallet,
+  ChevronRight,
 } from 'lucide-react';
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts';
 
-// Mock Data
 const revenueData = [
   { day: 'Mon', revenue: 4500 },
   { day: 'Tue', revenue: 5200 },
@@ -103,6 +114,36 @@ const getClientAppointments = () => {
     .sort((a, b) => a.appointmentAt.getTime() - b.appointmentAt.getTime());
 };
 
+function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-border bg-card p-5 shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function PanelHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-5 flex items-start justify-between gap-3">
+      <div>
+        <h3 style={{ fontFamily: 'var(--font-heading)' }} className="text-[15px] font-semibold text-foreground">
+          {title}
+        </h3>
+        {subtitle && <p className="mt-0.5 text-[13px] text-muted-foreground">{subtitle}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const dueFollowUps = getDueFollowUps();
@@ -121,308 +162,306 @@ export default function Dashboard() {
     (client) => client.appointmentAt >= todayStart && client.appointmentAt <= todayEnd
   );
 
+  const pendingInvoices = recentInvoices.filter((i) => i.status === 'Pending' || i.status === 'Overdue');
+  const pendingTotal = pendingInvoices.reduce((sum, i) => sum + i.amount, 0);
+
+  const quickStats = [
+    { value: String(todayAppointments.length || 12), label: 'Appointments today' },
+    { value: String(pendingInvoices.length || 6), label: 'Pending checkouts' },
+    { value: formatCurrency(pendingTotal || 4200), label: 'Outstanding invoices' },
+    { value: String(lowStockItems.length), label: 'Stock alerts' },
+  ];
+
   return (
-    <div className="space-y-5 md:space-y-7">
-      <section
-        className="relative overflow-hidden rounded-lg border border-white/80 bg-[#1A1025] p-5 text-[#FFF7E8] shadow-[0_24px_70px_rgba(26,16,37,0.14)] md:p-7"
-        style={{
-          background:
-            'radial-gradient(circle at 12% 10%, rgba(240, 207, 130, 0.18), transparent 30%), radial-gradient(circle at 88% 35%, rgba(46, 204, 138, 0.12), transparent 26%), linear-gradient(135deg, #160C20 0%, #241631 60%, #34213A 100%)',
-        }}>
-        <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mx-auto max-w-[1400px] space-y-6">
+      {/* Welcome strip */}
+      <section className="relative overflow-hidden rounded-xl border border-[#2D1F3D]/20 bg-[#1A1025] px-5 py-5 md:px-6 md:py-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#C9A96E]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-[#2ECC8A]/8 blur-3xl" />
+
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 rounded-full border border-[#F2D794]/20 bg-white/[0.07] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#F2D794]">
-              <Activity size={14} />
-              Live clinic overview
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[#C9A96E]/80">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2ECC8A] opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2ECC8A]" />
+              </span>
+              Live overview
             </p>
             <h2
               style={{ fontFamily: 'var(--font-heading)' }}
-              className="mt-4 max-w-2xl text-4xl font-bold leading-tight md:text-5xl">
-              Your business pulse, beautifully organized.
+              className="mt-2 text-xl font-semibold leading-snug text-white md:text-2xl">
+              Good {now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening'} — here&apos;s your clinic at a glance.
             </h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-[#F8EEDB]/68 md:text-base">
-              Track revenue, client flow, product performance, and stock health from one focused command center.
+            <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-[#F5ECD7]/55">
+              Revenue, appointments, inventory, and billing — all in one place.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:min-w-[360px]">
-            {[
-              ['12', 'appointments today'],
-              ['6', 'pending checkouts'],
-              ['PKR 4.2k', 'invoice value'],
-              ['3', 'stock alerts'],
-            ].map(([value, label]) => (
-              <div key={label} className="rounded-lg border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
-                <p
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-3xl font-bold text-[#F2D794]">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[420px]">
+            {quickStats.map(({ value, label }) => (
+              <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-2.5">
+                <p style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-semibold tabular-nums text-[#E8C98A]">
                   {value}
                 </p>
-                <p className="mt-1 text-xs text-[#F8EEDB]/62">{label}</p>
+                <p className="mt-0.5 text-[11px] leading-tight text-[#F5ECD7]/45">{label}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <KPICard
           title="Today's Revenue"
           value={formatCurrency(8250)}
           change="+12.5%"
-          icon={<Banknote size={24} />}
+          icon={<Banknote size={18} strokeWidth={1.75} />}
           trend="up"
-          accent="#2ECC8A"
+          accent="success"
         />
         <KPICard
           title="Total Clients"
           value="342"
           change="+8 new"
-          icon={<Users size={24} />}
+          icon={<Users size={18} strokeWidth={1.75} />}
           trend="up"
-          accent="#8F609A"
+          accent="plum"
         />
         <KPICard
           title="Pending Invoices"
           value="15"
-          change="PKR 4,200"
-          icon={<FileText size={24} />}
+          change={formatCurrency(4200)}
+          icon={<FileText size={18} strokeWidth={1.75} />}
           trend="neutral"
-          accent="#F0A500"
+          accent="warning"
         />
         <KPICard
           title="Products Sold"
           value="89"
           change="+15.2%"
-          icon={<Package size={24} />}
+          icon={<Package size={18} strokeWidth={1.75} />}
           trend="up"
-          accent="#C9A96E"
+          accent="gold"
         />
       </div>
 
       {upcomingAppointments.length > 0 && (
-        <section className="rounded-lg border border-[#2ECC8A]/30 bg-[#EEF8F4] p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
+        <Panel className="border-[#2ECC8A]/20 bg-[#2ECC8A]/[0.04]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#2ECC8A] text-white">
-                <CalendarClock size={21} />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2ECC8A]/15 text-[#159B61]">
+                <CalendarClock size={17} strokeWidth={1.75} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#1A1025]">Appointment in the next hour</h3>
-                <p className="mt-1 text-sm text-[#6B6570]">
-                  These clients have appointments coming up within 60 minutes.
+                <h3 className="text-[14px] font-semibold text-foreground">Upcoming in the next hour</h3>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">
+                  {upcomingAppointments.length} appointment{upcomingAppointments.length === 1 ? '' : 's'} starting soon.
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[480px]">
               {upcomingAppointments.slice(0, 4).map((client) => (
                 <button
                   key={client.id}
                   type="button"
                   onClick={() => setSelectedAppointment(client)}
-                  className="rounded-lg border border-[#2ECC8A]/20 bg-white/85 px-4 py-3 text-left transition-all hover:border-[#2ECC8A] hover:shadow-md">
-                  <div className="font-semibold text-[#1A1025]">{client.name}</div>
-                  <div className="mt-1 text-xs text-[#6B6570]">
-                    Appointment at {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                  className="group flex items-center justify-between rounded-lg border border-[#2ECC8A]/15 bg-card px-3.5 py-2.5 text-left transition-colors hover:border-[#2ECC8A]/40">
+                  <div>
+                    <div className="text-[13px] font-medium text-foreground">{client.name}</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                    </div>
                   </div>
+                  <ChevronRight size={14} className="text-muted-foreground/40 transition-colors group-hover:text-[#2ECC8A]" />
                 </button>
               ))}
             </div>
           </div>
-        </section>
+        </Panel>
       )}
 
       {todayAppointments.length > 0 && (
-        <section className="rounded-lg border border-[#EDE8E3] bg-white p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold text-[#1A1025]">Today’s appointments</h3>
-              <p className="mt-1 text-sm text-[#6B6570]">
-                {todayAppointments.length} appointment{todayAppointments.length === 1 ? '' : 's'} scheduled today.
-              </p>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F7EFE1] text-[#A67F3F]">
-              <CalendarDays size={19} />
-            </div>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <Panel>
+          <PanelHeader
+            title="Today's Appointments"
+            subtitle={`${todayAppointments.length} scheduled for ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`}
+            action={
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-primary">
+                <CalendarDays size={15} strokeWidth={1.75} />
+              </div>
+            }
+          />
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {todayAppointments.slice(0, 8).map((client) => (
               <button
                 key={client.id}
                 type="button"
                 onClick={() => setSelectedAppointment(client)}
-                className="rounded-lg border border-[#EDE8E3] bg-[#F8F5F0] px-4 py-3 text-left transition-all hover:border-[#C9A96E] hover:bg-white hover:shadow-md">
-                <div className="font-semibold text-[#1A1025]">{client.name}</div>
-                <div className="mt-1 text-xs text-[#6B6570]">
+                className="group rounded-lg border border-border bg-background px-3.5 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-secondary/40">
+                <div className="text-[13px] font-medium text-foreground">{client.name}</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
                   {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
                 </div>
               </button>
             ))}
           </div>
-        </section>
+        </Panel>
       )}
 
       {dueFollowUps.length > 0 && (
-        <section className="rounded-lg border border-[#D1AD69]/45 bg-[#FFF8E8] p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-5">
+        <Panel className="border-[#C9A96E]/20 bg-[#C9A96E]/[0.04]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#D1AD69] text-[#1A1025]">
-                <CalendarClock size={21} />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#C9A96E]/15 text-[#A07840]">
+                <CalendarClock size={17} strokeWidth={1.75} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#1A1025]">Follow-up reminders</h3>
-                <p className="mt-1 text-sm text-[#6B6570]">
-                  These clients need follow-up today or tomorrow.
-                </p>
+                <h3 className="text-[14px] font-semibold text-foreground">Follow-up reminders</h3>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">Clients due for follow-up today or tomorrow.</p>
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[480px]">
               {dueFollowUps.slice(0, 4).map((client) => (
-                <div key={client.id} className="rounded-lg border border-[#D1AD69]/30 bg-white/80 px-4 py-3">
-                  <div className="font-semibold text-[#1A1025]">Follow up {client.name}</div>
-                  <div className="mt-1 text-xs text-[#6B6570]">
+                <div key={client.id} className="rounded-lg border border-[#C9A96E]/15 bg-card px-3.5 py-2.5">
+                  <div className="text-[13px] font-medium text-foreground">{client.name}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
                     {new Date(client.followUpDate!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {client.phone}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </section>
+        </Panel>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 md:gap-6">
-        <div className="lg:col-span-3 rounded-lg border border-white/80 bg-white/95 p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 style={{ fontFamily: 'var(--font-heading)' }}
-                className="text-2xl font-bold text-[#1A1025]">
-                Revenue Trend
-              </h3>
-              <p className="text-sm text-[#6B6570] mt-1">Last 7 days performance</p>
-            </div>
-            <div className="flex items-center gap-2 rounded-full bg-[#2ECC8A]/10 px-3 py-1.5 text-[#159B61]">
-              <TrendingUp size={18} />
-              <span className="font-semibold">+18.3%</span>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EDE8E3" />
-              <XAxis dataKey="day" stroke="#6B6570" style={{ fontSize: '12px' }} />
-              <YAxis stroke="#6B6570" style={{ fontSize: '12px' }} tickFormatter={(value) => `PKR ${value / 1000}k`} />
+      {/* Charts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-5">
+        <Panel className="lg:col-span-3">
+          <PanelHeader
+            title="Revenue Trend"
+            subtitle="Last 7 days"
+            action={
+              <span className="inline-flex items-center gap-1 rounded-md bg-[#2ECC8A]/10 px-2 py-1 text-[12px] font-medium text-[#159B61]">
+                <TrendingUp size={13} strokeWidth={2} />
+                +18.3%
+              </span>
+            }
+          />
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={revenueData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+              <defs>
+                <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#C9A96E" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#C9A96E" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EDE8E3" vertical={false} />
+              <XAxis
+                dataKey="day"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: '#6B6570' }}
+                dy={8}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: '#6B6570' }}
+                tickFormatter={(value) => `${value / 1000}k`}
+                width={40}
+              />
               <Tooltip
                 formatter={(value) => [formatCurrency(Number(value)), 'Revenue']}
                 contentStyle={{
-                  backgroundColor: 'white',
+                  backgroundColor: '#fff',
                   border: '1px solid #EDE8E3',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(26, 16, 37, 0.08)'
+                  boxShadow: '0 4px 16px rgba(26,16,37,0.06)',
+                  fontSize: '13px',
                 }}
               />
-              <Line
-                type="monotone"
-                dataKey="revenue"
-                stroke="#C9A96E"
-                strokeWidth={3}
-                dot={{ fill: '#FFF7E8', stroke: '#C9A96E', strokeWidth: 3, r: 5 }}
-                activeDot={{ r: 7 }}
-              />
-            </LineChart>
+              <Area type="monotone" dataKey="revenue" stroke="#C9A96E" strokeWidth={2} fill="url(#revenueFill)" dot={false} activeDot={{ r: 4, fill: '#C9A96E', stroke: '#fff', strokeWidth: 2 }} />
+            </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </Panel>
 
-        <div className="lg:col-span-2 rounded-lg border border-white/80 bg-white/95 p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-6">
-          <div className="mb-5 flex items-start justify-between">
-            <div>
-              <h3 style={{ fontFamily: 'var(--font-heading)' }}
-                className="text-2xl font-bold text-[#1A1025]">
-                Top Products
-              </h3>
-              <p className="mt-1 text-sm text-[#6B6570]">Best performing retail mix</p>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F7EFE1] text-[#A67F3F]">
-              <Package size={19} />
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={topProductsData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={5}
-                dataKey="value">
-                {topProductsData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} stroke="#FFFFFF" strokeWidth={4} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #EDE8E3',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(26, 16, 37, 0.08)'
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-4 space-y-3">
-            {topProductsData.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between rounded-lg bg-[#FAF7F1] px-3 py-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-[#1A1025]">{item.name}</span>
+        <Panel className="lg:col-span-2">
+          <PanelHeader title="Top Products" subtitle="Retail mix by share" />
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={topProductsData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={52}
+                  outerRadius={78}
+                  paddingAngle={3}
+                  dataKey="value"
+                  stroke="none">
+                  {topProductsData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [`${value}%`, 'Share']}
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #EDE8E3',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(26,16,37,0.06)',
+                    fontSize: '13px',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+
+            <div className="w-full flex-1 space-y-2">
+              {topProductsData.map((item) => (
+                <div key={item.name} className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="truncate text-[13px] text-foreground">{item.name}</span>
+                  </div>
+                  <span className="shrink-0 text-[13px] font-medium tabular-nums text-muted-foreground">{item.value}%</span>
                 </div>
-                <span className="font-semibold text-[#6B6570]">{item.value}%</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        </Panel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="rounded-lg border border-white/80 bg-white/95 p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h3 style={{ fontFamily: 'var(--font-heading)' }}
-                className="text-2xl font-bold text-[#1A1025]">
-                Recent Invoices
-              </h3>
-              <p className="mt-1 text-sm text-[#6B6570]">Latest billing activity</p>
-            </div>
-            <CalendarDays size={20} className="text-[#A67F3F]" />
-          </div>
-          <div className="overflow-x-auto">
+      {/* Tables row */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+        <Panel>
+          <PanelHeader title="Recent Invoices" subtitle="Latest billing activity" />
+          <div className="overflow-x-auto -mx-1">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#EDE8E3]">
-                  <th className="text-left py-3 px-2 text-sm font-semibold text-[#6B6570]">Invoice</th>
-                  <th className="text-left py-3 px-2 text-sm font-semibold text-[#6B6570]">Client</th>
-                  <th className="text-left py-3 px-2 text-sm font-semibold text-[#6B6570]">Amount</th>
-                  <th className="text-left py-3 px-2 text-sm font-semibold text-[#6B6570]">Status</th>
+                <tr className="border-b border-border">
+                  <th className="pb-2.5 pl-1 pr-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Invoice</th>
+                  <th className="pb-2.5 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Client</th>
+                  <th className="pb-2.5 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</th>
+                  <th className="pb-2.5 pl-2 pr-1 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentInvoices.map((invoice) => (
-                  <tr key={invoice.id} className="border-b border-[#EDE8E3]/60 hover:bg-[#FAF7F1] transition-colors">
-                    <td className="py-3 px-2">
-                      <span style={{ fontFamily: 'var(--font-mono)' }}
-                        className="text-sm font-medium text-[#A67F3F]">
+                  <tr key={invoice.id} className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30">
+                    <td className="py-2.5 pl-1 pr-2">
+                      <span style={{ fontFamily: 'var(--font-mono)' }} className="text-[12px] font-medium text-primary">
                         {invoice.id}
                       </span>
                     </td>
-                    <td className="py-3 px-2 text-sm text-[#1A1025]">{invoice.client}</td>
-                    <td className="py-3 px-2">
-                      <span style={{ fontFamily: 'var(--font-heading)' }}
-                        className="text-sm font-semibold text-[#1A1025]">
-                        {formatCurrency(invoice.amount)}
-                      </span>
+                    <td className="py-2.5 px-2 text-[13px] text-foreground">{invoice.client}</td>
+                    <td className="py-2.5 px-2 text-[13px] font-medium tabular-nums text-foreground">
+                      {formatCurrency(invoice.amount)}
                     </td>
-                    <td className="py-3 px-2">
+                    <td className="py-2.5 pl-2 pr-1">
                       <StatusBadge status={invoice.status} />
                     </td>
                   </tr>
@@ -430,74 +469,74 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Panel>
 
-        <div className="rounded-lg border border-white/80 bg-white/95 p-4 shadow-[0_18px_55px_rgba(26,16,37,0.08)] md:p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={20} className="text-[#F0A500]" />
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-heading)' }}
-                  className="text-2xl font-bold text-[#1A1025]">
-                  Low Stock Alerts
-                </h3>
-                <p className="mt-1 text-sm text-[#6B6570]">Restock before checkout delays</p>
-              </div>
-            </div>
-            <span className="rounded-full bg-[#F0A500]/12 px-3 py-1 text-xs font-bold text-[#A86F00]">
-              3 items
-            </span>
-          </div>
-          <div className="space-y-4">
-            {lowStockItems.map((item, idx) => (
-              <div key={idx} className="p-4 bg-[#FFF9ED] border border-[#F0A500]/20 rounded-lg">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="font-medium text-[#1A1025]">{item.product}</div>
-                    <div className="text-xs text-[#6B6570] mt-0.5">{item.category}</div>
+        <Panel>
+          <PanelHeader
+            title="Low Stock Alerts"
+            subtitle="Items below minimum threshold"
+            action={
+              <span className="rounded-md bg-[#F0A500]/10 px-2 py-1 text-[11px] font-medium text-[#A86F00]">
+                {lowStockItems.length} items
+              </span>
+            }
+          />
+          <div className="space-y-3">
+            {lowStockItems.map((item) => {
+              const pct = Math.min((item.current / item.minimum) * 100, 100);
+              return (
+                <div key={item.product} className="rounded-lg border border-[#F0A500]/15 bg-[#F0A500]/[0.03] p-3.5">
+                  <div className="mb-2.5 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[13px] font-medium text-foreground">{item.product}</div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">{item.category}</div>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-[#F0A500]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#A86F00]">
+                      Low
+                    </span>
                   </div>
-                  <span className="text-xs px-2 py-1 bg-[#F0A500] text-white rounded-full font-medium">
-                    Low Stock
-                  </span>
+                  <div className="mb-2 flex items-center gap-3 text-[12px] text-muted-foreground">
+                    <span>
+                      Stock: <strong className="font-medium text-[#F0A500]">{item.current}</strong>
+                    </span>
+                    <span className="text-border">·</span>
+                    <span>
+                      Min: <strong className="font-medium text-foreground">{item.minimum}</strong>
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#E5445A] to-[#F0A500] transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-[#6B6570]">
-                    Current: <strong className="text-[#F0A500]">{item.current}</strong>
-                  </span>
-                  <span className="text-[#6B6570]">
-                    Min: <strong className="text-[#1A1025]">{item.minimum}</strong>
-                  </span>
-                </div>
-                <div className="mt-3 h-2 bg-[#EDE8E3] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#E5445A] to-[#F0A500]"
-                    style={{ width: `${(item.current / item.minimum) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        </Panel>
       </div>
 
       {selectedAppointment && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm p-0 sm:items-center sm:p-4"
           onClick={() => setSelectedAppointment(null)}>
           <div
-            className="w-full max-w-xl rounded-t-[24px] bg-white shadow-[0_24px_70px_rgba(26,16,37,0.34)] sm:rounded-[16px]"
+            className="w-full max-w-lg rounded-t-2xl bg-card shadow-xl sm:rounded-xl"
             onClick={(event) => event.stopPropagation()}>
-            <div className="sm:hidden flex justify-center pt-3 pb-1">
-              <div className="h-1 w-10 rounded-full bg-[#EDE8E3]" />
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="h-1 w-8 rounded-full bg-border" />
             </div>
-            <div className="flex items-start justify-between gap-4 border-b border-[#EDE8E3] p-5">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#A67F3F]">Appointment Details</p>
-                <h3 className="mt-1 text-2xl font-bold text-[#1A1025]">{selectedAppointment.name}</h3>
-                <p className="mt-1 text-sm text-[#6B6570]">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Appointment</p>
+                <h3 style={{ fontFamily: 'var(--font-heading)' }} className="mt-0.5 text-lg font-semibold text-foreground">
+                  {selectedAppointment.name}
+                </h3>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">
                   {selectedAppointment.appointmentAt.toLocaleString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
+                    weekday: 'short',
+                    month: 'short',
                     day: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit',
@@ -506,60 +545,60 @@ export default function Dashboard() {
               </div>
               <button
                 onClick={() => setSelectedAppointment(null)}
-                className="rounded-lg p-2 text-[#6B6570] transition-colors hover:bg-[#F8F5F0]">
-                <X size={22} />
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4 p-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg bg-[#F8F5F0] p-4">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
-                    <Phone size={14} />
+            <div className="space-y-3 p-5">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg bg-background p-3.5">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Phone size={12} />
                     Phone
                   </div>
-                  <div className="font-semibold text-[#1A1025]">{selectedAppointment.phone}</div>
+                  <div className="text-[13px] font-medium text-foreground">{selectedAppointment.phone}</div>
                 </div>
-                <div className="rounded-lg bg-[#F8F5F0] p-4">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
-                    <Wallet size={14} />
+                <div className="rounded-lg bg-background p-3.5">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Wallet size={12} />
                     Total Spent
                   </div>
-                  <div className="font-bold text-[#C9A96E]">{formatCurrency(selectedAppointment.totalSpent || 0)}</div>
+                  <div className="text-[13px] font-semibold text-primary">{formatCurrency(selectedAppointment.totalSpent || 0)}</div>
                 </div>
               </div>
 
               {selectedAppointment.email && (
-                <div className="rounded-lg border border-[#EDE8E3] p-4">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6B6570]">
-                    <Mail size={14} />
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Mail size={12} />
                     Email
                   </div>
-                  <div className="text-sm font-medium text-[#1A1025]">{selectedAppointment.email}</div>
+                  <div className="text-[13px] text-foreground">{selectedAppointment.email}</div>
                 </div>
               )}
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-[#EDE8E3] p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Skin Type</div>
-                  <div className="mt-1 font-semibold text-[#1A1025]">{selectedAppointment.skinType || 'Not set'}</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin Type</div>
+                  <div className="mt-1 text-[13px] font-medium text-foreground">{selectedAppointment.skinType || 'Not set'}</div>
                 </div>
-                <div className="rounded-lg border border-[#EDE8E3] p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Follow Up</div>
-                  <div className="mt-1 font-semibold text-[#1A1025]">
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Follow Up</div>
+                  <div className="mt-1 text-[13px] font-medium text-foreground">
                     {selectedAppointment.followUpDate
-                      ? new Date(selectedAppointment.followUpDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      ? new Date(selectedAppointment.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                       : 'Not set'}
                   </div>
                 </div>
               </div>
 
               {selectedAppointment.concerns && selectedAppointment.concerns.length > 0 && (
-                <div className="rounded-lg border border-[#EDE8E3] p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Skin Concerns</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin Concerns</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {selectedAppointment.concerns.map((concern) => (
-                      <span key={concern} className="rounded-full bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#A67F3F]">
+                      <span key={concern} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary">
                         {concern}
                       </span>
                     ))}
@@ -567,15 +606,15 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="rounded-lg border border-[#EDE8E3] p-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Allergies</div>
-                <div className="mt-1 text-sm font-medium text-[#1A1025]">{selectedAppointment.allergies || 'None'}</div>
+              <div className="rounded-lg border border-border p-3.5">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Allergies</div>
+                <div className="mt-1 text-[13px] text-foreground">{selectedAppointment.allergies || 'None'}</div>
               </div>
 
               {selectedAppointment.notes && (
-                <div className="rounded-lg bg-[#F8F5F0] p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-[#6B6570]">Notes</div>
-                  <p className="mt-1 text-sm text-[#1A1025]">{selectedAppointment.notes}</p>
+                <div className="rounded-lg bg-background p-3.5">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Notes</div>
+                  <p className="mt-1 text-[13px] leading-relaxed text-foreground">{selectedAppointment.notes}</p>
                 </div>
               )}
 
@@ -587,9 +626,8 @@ export default function Dashboard() {
                     appointmentId: selectedAppointment.id,
                   },
                 })}
-                className="w-full rounded-lg py-3 font-semibold text-white transition-all hover:opacity-95"
-                style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8C98A 100%)' }}>
-                Go to POS / Save Treatment Bill
+                className="w-full rounded-lg bg-primary py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+                Open in POS
               </button>
             </div>
           </div>
@@ -599,64 +637,62 @@ export default function Dashboard() {
   );
 }
 
-// KPI Card Component
-function KPICard({ title, value, change, icon, trend, accent }: {
+const accentStyles = {
+  success: { icon: 'bg-[#2ECC8A]/10 text-[#159B61]', bar: 'bg-[#2ECC8A]' },
+  plum: { icon: 'bg-[#8F609A]/10 text-[#8F609A]', bar: 'bg-[#8F609A]' },
+  warning: { icon: 'bg-[#F0A500]/10 text-[#A86F00]', bar: 'bg-[#F0A500]' },
+  gold: { icon: 'bg-[#C9A96E]/10 text-[#A07840]', bar: 'bg-[#C9A96E]' },
+} as const;
+
+function KPICard({
+  title,
+  value,
+  change,
+  icon,
+  trend,
+  accent,
+}: {
   title: string;
   value: string;
   change: string;
   icon: React.ReactNode;
   trend: 'up' | 'down' | 'neutral';
-  accent: string;
+  accent: keyof typeof accentStyles;
 }) {
-  const trendColor = trend === 'up' ? '#2ECC8A' : trend === 'down' ? '#E5445A' : '#6B6570';
+  const styles = accentStyles[accent];
+  const trendColor = trend === 'up' ? 'text-[#159B61]' : trend === 'down' ? 'text-destructive' : 'text-muted-foreground';
 
   return (
-    <div
-      className="group relative overflow-hidden rounded-lg border border-white/80 bg-white p-4 shadow-[0_16px_45px_rgba(26,16,37,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(26,16,37,0.12)] md:p-5">
-      <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} />
-      <div className="absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-[0.08]" style={{ backgroundColor: accent }} />
-
-      <div className="relative flex h-full flex-col gap-5">
-        <div className="flex items-start justify-between gap-3">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-lg text-white shadow-[0_12px_28px_rgba(26,16,37,0.12)]"
-            style={{ background: `linear-gradient(135deg, ${accent} 0%, #F2D794 135%)` }}>
-            {icon}
-          </div>
-          <div className="flex min-w-0 items-center gap-1 rounded-full border border-[#EDE8E3] bg-[#FAF7F1] px-2.5 py-1">
-            {trend === 'up' && <ArrowUpRight size={14} style={{ color: trendColor }} />}
-            <span className="truncate text-xs font-bold" style={{ color: trendColor }}>
-              {change}
-            </span>
-          </div>
+    <div className="rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-start justify-between gap-2">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${styles.icon}`}>
+          {icon}
         </div>
-
-        <div className="min-w-0">
-          <h4 className="mb-2 text-sm font-medium text-[#5F5967]">{title}</h4>
-          <div style={{ fontFamily: 'var(--font-heading)' }}
-            className="truncate text-3xl font-black leading-none text-[#1A1025] md:text-[34px]">
-            {value}
-          </div>
+        <div className={`flex items-center gap-0.5 text-[11px] font-medium ${trendColor}`}>
+          {trend === 'up' && <ArrowUpRight size={12} strokeWidth={2} />}
+          {change}
         </div>
       </div>
+      <div className="mt-3">
+        <p className="text-[12px] text-muted-foreground">{title}</p>
+        <p style={{ fontFamily: 'var(--font-heading)' }} className="mt-1 text-xl font-semibold tabular-nums leading-none text-foreground md:text-[22px]">
+          {value}
+        </p>
+      </div>
+      <div className={`mt-3 h-0.5 w-8 rounded-full ${styles.bar}`} />
     </div>
   );
 }
 
-// Status Badge Component
 function StatusBadge({ status }: { status: string }) {
-  const colors = {
-    Paid: { bg: '#2ECC8A', text: 'white' },
-    Pending: { bg: '#F0A500', text: 'white' },
-    Overdue: { bg: '#E5445A', text: 'white' },
+  const styles: Record<string, string> = {
+    Paid: 'bg-[#2ECC8A]/10 text-[#159B61]',
+    Pending: 'bg-[#F0A500]/10 text-[#A86F00]',
+    Overdue: 'bg-destructive/10 text-destructive',
   };
 
-  const style = colors[status as keyof typeof colors] || colors.Pending;
-
   return (
-    <span
-      className="inline-block px-3 py-1 rounded-full text-xs font-bold"
-      style={{ backgroundColor: style.bg, color: style.text }}>
+    <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-medium ${styles[status] || styles.Pending}`}>
       {status}
     </span>
   );
