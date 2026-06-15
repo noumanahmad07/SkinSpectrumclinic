@@ -1,16 +1,9 @@
--- Settings page backend setup for Skin Spectrum
--- Covers all Settings tabs:
--- Clinic Info, Tax & Billing, Notifications, User Accounts, Bill Person, Security
--- Run this AFTER all previous setup files.
+-- Fix: function crypt(text, text) does not exist
+-- Run this in Supabase SQL Editor if settings_backend_setup.sql failed on verify_bill_person.
+-- Cause: pgcrypto lives in the "extensions" schema on Supabase, not "public".
 
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
-
-alter table public.clinic_settings
-  add column if not exists logo_url text,
-  add column if not exists payment_methods jsonb not null default '{"cash":true,"card":true,"transfer":true,"mobile":true,"credit":true}'::jsonb,
-  add column if not exists notification_settings jsonb not null default '{}'::jsonb,
-  add column if not exists security_settings jsonb not null default '{"timeout":"30","forceChange":true}'::jsonb;
 
 create or replace view public.settings_clinic
 with (security_invoker = true)
@@ -60,31 +53,6 @@ select
   updated_at
 from public.bill_persons
 order by created_at asc;
-
-alter table public.bill_persons enable row level security;
-
-drop policy if exists "authenticated staff can manage bill persons" on public.bill_persons;
-drop policy if exists "settings can read bill persons" on public.bill_persons;
-drop policy if exists "settings can insert bill persons" on public.bill_persons;
-drop policy if exists "settings can update bill persons" on public.bill_persons;
-drop policy if exists "settings can delete bill persons" on public.bill_persons;
-
-create policy "settings can read bill persons" on public.bill_persons
-  for select to anon, authenticated
-  using (true);
-
-create policy "settings can insert bill persons" on public.bill_persons
-  for insert to anon, authenticated
-  with check (true);
-
-create policy "settings can update bill persons" on public.bill_persons
-  for update to anon, authenticated
-  using (true)
-  with check (true);
-
-create policy "settings can delete bill persons" on public.bill_persons
-  for delete to anon, authenticated
-  using (true);
 
 create or replace function public.upsert_bill_person(
   person_id uuid,

@@ -338,8 +338,19 @@ export default function Billing() {
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground/50">
               <Receipt size={22} strokeWidth={1.5} />
             </div>
-            <p className="text-[14px] font-medium text-foreground">No invoices found</p>
-            <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+            {invoices.length === 0 ? (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No invoices yet</p>
+                <p className="mt-1 max-w-[300px] text-[13px] text-muted-foreground">
+                  Invoices are created when you save a bill on POS. Complete a sale there to add billing records.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No invoices found</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+              </>
+            )}
           </div>
         ) : (
           <>

@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import ssaLogo from '../../assets/ssa-logo.png';
-import { canUseBackend, fetchReportsData } from '../lib/backend';
+import { canUseBackend, fetchReportsData, parseSupabaseError } from '../lib/backend';
+import { hasActiveSupabaseSession } from '../lib/supabase';
 
 const dataByRange = {
   today: {
@@ -191,6 +192,7 @@ function KPICard({
 
 export default function Reports() {
   const backendEnabled = canUseBackend();
+  const backendSyncEnabled = backendEnabled && hasActiveSupabaseSession();
   const [dateRange, setDateRange] = useState<keyof typeof dataByRange>('month');
   const [exportSuccess, setExportSuccess] = useState('');
   const [backendError, setBackendError] = useState('');
@@ -206,7 +208,10 @@ export default function Reports() {
   });
 
   useEffect(() => {
-    if (!backendEnabled) return;
+    if (!backendSyncEnabled) {
+      setBackendError('');
+      return;
+    }
 
     let ignore = false;
     fetchReportsData()
@@ -243,18 +248,18 @@ export default function Reports() {
           transactions: data.summary?.transactions || 0,
           newClients: data.summary?.new_clients || 0,
         });
-        setBackendError('');
+        setBackendError(data.errors.length ? data.errors.join(' ') : '');
       })
-      .catch(() => {
+      .catch((error) => {
         if (!ignore) {
-          setBackendError('Could not load reports from Supabase. Please run reports_backend_setup.sql and check login/RLS.');
+          setBackendError(parseSupabaseError(error));
         }
       });
 
     return () => {
       ignore = true;
     };
-  }, [backendEnabled]);
+  }, [backendSyncEnabled]);
 
   const currentData = reportData[dateRange];
   const transactions = summary.transactions || 0;
@@ -448,6 +453,12 @@ export default function Reports() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendEnabled && !backendSyncEnabled && (
+        <div className="rounded-lg border border-[#F0A500]/30 bg-[#F0A500]/10 px-4 py-3 text-[13px] text-[#A86F00]">
+          Sign in with your Supabase staff account to load live reports from the backend.
+        </div>
+      )}
 
       {backendError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">

@@ -25,6 +25,10 @@ export function isSupabaseConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
+export function hasActiveSupabaseSession() {
+  return Boolean(getStoredSupabaseSession()?.access_token);
+}
+
 export function getStoredSupabaseSession(): SupabaseSession | null {
   try {
     const raw = window.localStorage.getItem(SUPABASE_SESSION_KEY);
@@ -73,11 +77,54 @@ async function supabaseRequest<T>(path: string, options: RequestOptions = {}): P
   return response.json() as Promise<T>;
 }
 
+type SignUpResponse = {
+  access_token?: string;
+  user?: {
+    id: string;
+    email?: string;
+  };
+  id?: string;
+  email?: string;
+  confirmation_sent_at?: string;
+};
+
+export async function signUpStaffUser(
+  email: string,
+  password: string,
+  metadata: { name: string; role: string },
+): Promise<{ id: string; email: string }> {
+  const currentSession = getStoredSupabaseSession();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    const result = await supabaseRequest<SignUpResponse>('/auth/v1/signup', {
+      method: 'POST',
+      token: SUPABASE_ANON_KEY,
+      body: {
+        email: normalizedEmail,
+        password,
+        data: metadata,
+      },
+    });
+
+    const userId = result.user?.id ?? result.id;
+    if (!userId) {
+      throw new Error(
+        'Supabase did not return the new user id. In Supabase Dashboard go to Authentication → Providers → Email and turn off "Confirm email", then try again.',
+      );
+    }
+
+    return { id: userId, email: result.user?.email ?? result.email ?? normalizedEmail };
+  } finally {
+    storeSupabaseSession(currentSession);
+  }
+}
+
 export async function signInWithPassword(email: string, password: string) {
   const session = await supabaseRequest<SupabaseSession>('/auth/v1/token?grant_type=password', {
     method: 'POST',
     token: SUPABASE_ANON_KEY,
-    body: { email, password },
+    body: { email: email.trim().toLowerCase(), password },
   });
   storeSupabaseSession(session);
   return session;

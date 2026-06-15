@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import React, { useState, useEffect, useRef, useCallback, type ReactNode, type KeyboardEvent } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode, type KeyboardEvent } from 'react';
 import { useLocation } from 'react-router';
 import {
   Search,
@@ -47,6 +47,7 @@ import {
 import { appendInvoice, buildPosInvoice } from '../lib/invoices';
 import {
   canUseBackend,
+  canWriteToBackend,
   decreaseBackendProductStock,
   fetchSettingsData,
   fetchPosClients,
@@ -68,24 +69,25 @@ type PosProduct = {
   price: number;
   stock: number;
   unit?: string;
+  status?: 'Active' | 'Inactive';
 };
 
 const mockProducts: PosProduct[] = [
-  { id: 1, name: 'Hydrating Serum', category: 'Serums', price: 89, stock: 45 },
-  { id: 2, name: 'Anti-Aging Cream', category: 'Creams', price: 125, stock: 32 },
-  { id: 3, name: 'Vitamin C Serum', category: 'Serums', price: 95, stock: 28 },
-  { id: 4, name: 'Retinol Night Cream', category: 'Creams', price: 110, stock: 5 },
-  { id: 5, name: 'Facial Treatment - Basic', category: 'Treatments', price: 150, stock: 999 },
-  { id: 6, name: 'Facial Treatment - Premium', category: 'Treatments', price: 280, stock: 999 },
-  { id: 7, name: 'Exfoliating Scrub', category: 'Scrubs', price: 65, stock: 50 },
-  { id: 8, name: 'Moisturizing Mask', category: 'Masks', price: 75, stock: 38 },
-  { id: 9, name: 'Eye Cream Deluxe', category: 'Creams', price: 98, stock: 22 },
-  { id: 10, name: 'Sunscreen SPF 50', category: 'Protection', price: 55, stock: 60 },
-  { id: 11, name: 'Luxury Bundle', category: 'Bundles', price: 450, stock: 15 },
-  { id: 12, name: 'Cleanser Foam', category: 'Cleansers', price: 48, stock: 0 },
+  { id: 1, name: 'Hydrating Serum', category: 'Serums', price: 89, stock: 45, status: 'Active' },
+  { id: 2, name: 'Anti-Aging Cream', category: 'Creams', price: 125, stock: 32, status: 'Active' },
+  { id: 3, name: 'Vitamin C Serum', category: 'Serums', price: 95, stock: 28, status: 'Active' },
+  { id: 4, name: 'Retinol Night Cream', category: 'Creams', price: 110, stock: 5, status: 'Active' },
+  { id: 5, name: 'Facial Treatment - Basic', category: 'Treatments', price: 150, stock: 999, status: 'Active' },
+  { id: 6, name: 'Facial Treatment - Premium', category: 'Treatments', price: 280, stock: 999, status: 'Active' },
+  { id: 7, name: 'Exfoliating Scrub', category: 'Scrubs', price: 65, stock: 50, status: 'Active' },
+  { id: 8, name: 'Moisturizing Mask', category: 'Masks', price: 75, stock: 38, status: 'Active' },
+  { id: 9, name: 'Eye Cream Deluxe', category: 'Creams', price: 98, stock: 22, status: 'Active' },
+  { id: 10, name: 'Sunscreen SPF 50', category: 'Protection', price: 55, stock: 60, status: 'Active' },
+  { id: 11, name: 'Luxury Bundle', category: 'Bundles', price: 450, stock: 15, status: 'Active' },
+  { id: 12, name: 'Cleanser Foam', category: 'Cleansers', price: 48, stock: 0, status: 'Inactive' },
 ];
 
-const categories = ['All', 'Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs', 'Masks', 'Protection'];
+const POS_CATEGORY_ORDER = ['Treatments', 'Serums', 'Creams', 'Cleansers', 'Bundles', 'Scrubs', 'Masks', 'Protection'];
 const fallbackClients = ['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'];
 
 const mapBackendPosProduct = (product: BackendPosProduct): PosProduct => ({
@@ -97,7 +99,19 @@ const mapBackendPosProduct = (product: BackendPosProduct): PosProduct => ({
   price: Number(product.price || 0),
   stock: product.stock,
   unit: product.unit,
+  status: product.status,
 });
+
+function buildPosCategories(productList: PosProduct[]) {
+  const discovered = Array.from(new Set(productList.map((product) => product.category)));
+  const ordered = POS_CATEGORY_ORDER.filter((category) => discovered.includes(category));
+  const extras = discovered.filter((category) => !POS_CATEGORY_ORDER.includes(category)).sort();
+  return ['All', ...ordered, ...extras];
+}
+
+function isPosProductUnavailable(product: PosProduct) {
+  return product.status === 'Inactive' || product.stock === 0;
+}
 
 const categoryIcons: Record<string, LucideIcon> = {
   Serums: Droplets,
@@ -153,6 +167,46 @@ interface CartItem {
   name: string;
   price: number;
   quantity: number;
+}
+
+type PosDraft = {
+  cart: CartItem[];
+  selectedClient: string | null;
+  selectedClientId: string | null;
+  discount: string;
+  creditAmount: string;
+  includeTax: boolean;
+  paymentMethod: PaymentMethod;
+};
+
+const POS_DRAFT_STORAGE_KEY = 'skinspectrum_pos_draft';
+
+function loadPosDraft(): PosDraft | null {
+  try {
+    const raw = window.sessionStorage.getItem(POS_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PosDraft>;
+    if (!Array.isArray(parsed.cart)) return null;
+    return {
+      cart: parsed.cart,
+      selectedClient: parsed.selectedClient ?? null,
+      selectedClientId: parsed.selectedClientId ?? null,
+      discount: parsed.discount ?? '',
+      creditAmount: parsed.creditAmount ?? '',
+      includeTax: parsed.includeTax ?? true,
+      paymentMethod: parsed.paymentMethod ?? 'Cash',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function savePosDraft(draft: PosDraft) {
+  window.sessionStorage.setItem(POS_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+}
+
+function clearPosDraft() {
+  window.sessionStorage.removeItem(POS_DRAFT_STORAGE_KEY);
 }
 
 function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -316,6 +370,7 @@ function StaffAuthModal({
 export default function POS() {
   const location = useLocation();
   const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const billing = useBillingSettings();
   const enabledPaymentMethods = getEnabledPaymentMethods(billing);
   const creditEnabled = isCreditEnabled(billing);
@@ -332,24 +387,25 @@ export default function POS() {
   );
 
   const routedClient = (location.state as { clientName?: string } | null)?.clientName || null;
+  const savedDraft = loadPosDraft();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedClient, setSelectedClient] = useState<string | null>(routedClient);
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [cart, setCart] = useState<CartItem[]>(() => savedDraft?.cart ?? []);
+  const [selectedClient, setSelectedClient] = useState<string | null>(() => routedClient ?? savedDraft?.selectedClient ?? null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(() => savedDraft?.selectedClientId ?? null);
   const [products, setProducts] = useState<PosProduct[]>(() => (canUseBackend() ? [] : mockProducts));
   const [posClients, setPosClients] = useState<BackendPosClient[]>([]);
   const [treatmentName, setTreatmentName] = useState('');
   const [treatmentPrice, setTreatmentPrice] = useState('');
-  const [discount, setDiscount] = useState('');
-  const [includeTax, setIncludeTax] = useState(true);
+  const [discount, setDiscount] = useState(() => savedDraft?.discount ?? '');
+  const [includeTax, setIncludeTax] = useState(() => savedDraft?.includeTax ?? true);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [showTreatmentModal, setShowTreatmentModal] = useState(false);
   const [treatmentError, setTreatmentError] = useState('');
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
-  const [creditAmount, setCreditAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => savedDraft?.paymentMethod ?? 'Cash');
+  const [creditAmount, setCreditAmount] = useState(() => savedDraft?.creditAmount ?? '');
   const [showProductModal, setShowProductModal] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [billStaffName, setBillStaffName] = useState<string | null>(null);
@@ -374,6 +430,18 @@ export default function POS() {
       return enabledPaymentMethods[0];
     });
   }, [enabledPaymentMethods]);
+
+  useEffect(() => {
+    savePosDraft({
+      cart,
+      selectedClient,
+      selectedClientId,
+      discount,
+      creditAmount,
+      includeTax,
+      paymentMethod,
+    });
+  }, [cart, selectedClient, selectedClientId, discount, creditAmount, includeTax, paymentMethod]);
 
   useEffect(() => {
     if (!backendEnabled) return;
@@ -408,6 +476,11 @@ export default function POS() {
         (p.code || `SKU-${String(p.id).padStart(3, '0')}`).toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const categories = useMemo(() => buildPosCategories(products), [products]);
+
+  const getCartQuantity = (productId: number | string) =>
+    cart.find((item) => item.id === productId)?.quantity ?? 0;
+
   const openProductModal = useCallback(() => {
     setSearchQuery('');
     setSelectedCategory('All');
@@ -439,7 +512,7 @@ export default function POS() {
   }, [selectedProductIndex, showProductModal, filteredProducts.length]);
 
   const addToCart = (product: PosProduct) => {
-    if (product.stock === 0) return;
+    if (isPosProductUnavailable(product)) return;
     const existing = cart.find((item) => item.id === product.id);
     if (existing) {
       setCart(cart.map((item) =>
@@ -453,7 +526,14 @@ export default function POS() {
   };
 
   const addProductFromPicker = (product: PosProduct) => {
-    if (product.stock === 0) return;
+    if (product.status === 'Inactive') {
+      setAlertMessage(`${product.name} is inactive and cannot be added to a sale.`);
+      return;
+    }
+    if (product.stock === 0) {
+      setAlertMessage(`${product.name} has 0 quantity in inventory and cannot be added.`);
+      return;
+    }
     addToCart(product);
   };
 
@@ -655,6 +735,11 @@ export default function POS() {
       total,
     });
 
+    if (backendEnabled && !backendWritable) {
+      setAlertMessage('Saving bills requires a Supabase Auth login. Sign in with your Supabase staff account.');
+      return;
+    }
+
     if (backendEnabled) {
       try {
         await saveInvoiceToBackend(invoice);
@@ -745,6 +830,7 @@ export default function POS() {
   const resetSale = () => {
     setCart([]);
     setSelectedClient(null);
+    setSelectedClientId(null);
     setTreatmentName('');
     setTreatmentPrice('');
     setDiscount('');
@@ -753,6 +839,7 @@ export default function POS() {
     setBillStaffName(null);
     setPaymentMethod(enabledPaymentMethods[0] ?? 'Cash');
     setCreditAmount('');
+    clearPosDraft();
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -872,11 +959,11 @@ export default function POS() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-                <div className="min-w-0">
+                className="grid grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                <div className="min-w-0 justify-self-start">
                   <div className="truncate text-[12px] font-medium text-foreground md:text-[13px]">{item.name}</div>
                 </div>
-                <div className="flex items-center justify-center gap-1.5">
+                <div className="flex items-center justify-center gap-1.5 justify-self-center">
                   <button
                     onClick={() => updateQuantity(item.id, -1)}
                     className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-destructive/30 hover:text-destructive">
@@ -889,7 +976,7 @@ export default function POS() {
                     <Plus size={12} strokeWidth={2} />
                   </button>
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-2 justify-self-end">
                   <div className="text-right text-[12px] font-medium tabular-nums text-foreground md:text-[13px]">
                     {formatCurrency(item.price * item.quantity, true)}
                   </div>
@@ -1112,46 +1199,108 @@ export default function POS() {
                 ) : (
                   <ul className="space-y-1">
                     {filteredProducts.map((product, index) => {
+                      const unavailable = isPosProductUnavailable(product);
                       const outOfStock = product.stock === 0;
+                      const inactive = product.status === 'Inactive';
+                      const isService = product.stock >= 500;
                       const isActive = index === selectedProductIndex;
                       const CategoryIcon = categoryIcons[product.category] || Package;
+                      const cartQty = getCartQuantity(product.id);
+                      const stockLabel = outOfStock ? '0 quantity' : isService ? 'Available' : `${product.stock} in stock`;
+                      const subtitle = inactive ? `${stockLabel} · Inactive` : stockLabel;
                       return (
                         <li key={product.id}>
                           <button
                             type="button"
                             data-active={isActive}
-                            disabled={outOfStock}
                             onClick={() => addProductFromPicker(product)}
                             onMouseEnter={() => setSelectedProductIndex(index)}
-                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                            className={`grid w-full grid-cols-[auto_minmax(0,1fr)_4.5rem_auto] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
                               isActive
-                                ? 'bg-foreground text-background'
-                                : outOfStock
-                                ? 'cursor-not-allowed opacity-45'
+                                ? unavailable
+                                  ? 'bg-destructive text-destructive-foreground'
+                                  : 'bg-foreground text-background'
+                                : unavailable
+                                ? 'cursor-not-allowed bg-destructive/5 hover:bg-destructive/10'
                                 : 'hover:bg-muted/60'
                             }`}>
                             <div
                               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                                isActive ? 'bg-background/15 text-background' : 'bg-secondary text-primary'
+                                isActive
+                                  ? unavailable
+                                    ? 'bg-destructive-foreground/15 text-destructive-foreground'
+                                    : 'bg-background/15 text-background'
+                                  : unavailable
+                                  ? 'bg-destructive/10 text-destructive'
+                                  : 'bg-secondary text-primary'
                               }`}>
                               <CategoryIcon size={15} strokeWidth={1.75} />
                             </div>
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0">
                               <div className="truncate text-[13px] font-medium">{product.name}</div>
-                              <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] ${isActive ? 'text-background/70' : 'text-muted-foreground'}`}>
+                              <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] ${isActive ? (unavailable ? 'text-destructive-foreground/80' : 'text-background/70') : unavailable ? 'text-destructive/80' : 'text-muted-foreground'}`}>
                                 <span>{product.category}</span>
                                 <span>·</span>
                                 <span>{product.code || `SKU-${String(product.id).padStart(3, '0')}`}</span>
                                 <span>·</span>
-                                <span>{product.stock >= 500 ? 'Available' : `${product.stock} qty`}</span>
+                                <span>{subtitle}</span>
                               </div>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <div className={`text-[13px] font-medium tabular-nums ${isActive ? '' : 'text-foreground'}`}>
+                            <div className="flex flex-col items-center justify-center justify-self-center">
+                              {unavailable ? (
+                                <>
+                                  <span
+                                    className={`text-[9px] font-semibold uppercase tracking-wide ${
+                                      isActive ? 'text-destructive-foreground/90' : 'text-destructive'
+                                    }`}>
+                                    {outOfStock ? '0 qty' : 'Inactive'}
+                                  </span>
+                                  <span
+                                    className={`mt-0.5 text-center text-[10px] font-medium leading-tight ${
+                                      isActive ? 'text-destructive-foreground/70' : 'text-destructive/80'
+                                    }`}>
+                                    Cannot add
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span
+                                    className={`text-[9px] font-medium uppercase tracking-wide ${
+                                      isActive ? 'text-background/60' : 'text-muted-foreground'
+                                    }`}>
+                                    {isService ? 'Stock' : 'Qty'}
+                                  </span>
+                                  <span
+                                    className={`mt-0.5 min-w-[1.75rem] rounded-full px-2 py-0.5 text-center text-[13px] font-bold tabular-nums ${
+                                      isActive ? 'bg-background/20 text-background' : 'bg-muted text-foreground'
+                                    }`}>
+                                    {isService ? '∞' : product.stock}
+                                  </span>
+                                  {cartQty > 0 && (
+                                    <span
+                                      className={`mt-1 text-[9px] font-semibold uppercase tracking-wide ${
+                                        isActive ? 'text-background/70' : 'text-primary'
+                                      }`}>
+                                      In cart {cartQty}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                            <div className="shrink-0 justify-self-end text-right">
+                              <div
+                                className={`text-[13px] font-medium tabular-nums ${
+                                  isActive && !unavailable ? '' : unavailable ? 'text-destructive' : 'text-foreground'
+                                }`}>
                                 {formatCurrency(product.price)}
                               </div>
-                              {!outOfStock && isActive && (
+                              {isActive && !unavailable && (
                                 <div className="text-[10px] text-background/60">Enter ↵</div>
+                              )}
+                              {isActive && unavailable && (
+                                <div className="text-[10px] text-destructive-foreground/70">
+                                  {outOfStock ? '0 quantity' : 'Inactive'}
+                                </div>
                               )}
                             </div>
                           </button>

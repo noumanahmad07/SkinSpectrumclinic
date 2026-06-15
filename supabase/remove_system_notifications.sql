@@ -1,5 +1,7 @@
--- Notifications page backend setup for Skin Spectrum
--- Run this AFTER all previous setup files.
+-- Complete notifications fix (run once in Supabase SQL Editor)
+-- Removes system/setup messages, creates dismissals table, and refreshes the view.
+
+delete from public.notifications where category = 'System';
 
 create table if not exists public.notification_dismissals (
   id uuid primary key default gen_random_uuid(),
@@ -39,9 +41,6 @@ end;
 $$;
 
 grant execute on function public.dismiss_notification(text) to authenticated;
-
-create index if not exists notifications_category_idx on public.notifications (category);
-create index if not exists notifications_created_at_idx on public.notifications (created_at desc);
 
 create or replace view public.notifications_center
 with (security_invoker = false)

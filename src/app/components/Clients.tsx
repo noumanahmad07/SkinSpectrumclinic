@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Search, Plus, X, Phone, Mail, Calendar, Edit, CalendarClock, Eye, Users, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   canUseBackend,
   createBackendClient,
   fetchClientPageClients,
+  parseSupabaseError,
   updateBackendClient,
   type BackendClient,
   type BackendClientInput,
 } from '../lib/backend';
+import { hasActiveSupabaseSession } from '../lib/supabase';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
 const skinTypeStyles: Record<string, string> = {
@@ -44,83 +46,6 @@ interface Client {
   appointmentTime?: string;
 }
 
-const initialClients: Client[] = [
-  {
-    id: 1,
-    name: 'Emma Wilson',
-    phone: '+1 (555) 123-4567',
-    email: 'emma.w@example.com',
-    skinType: 'Dry',
-    lastVisit: '2026-05-20',
-    totalSpent: 2450,
-    concerns: ['Fine Lines', 'Dehydration'],
-    allergies: 'None',
-    notes: 'Prefers fragrance-free products',
-  },
-  {
-    id: 2,
-    name: 'Sarah Johnson',
-    phone: '+1 (555) 234-5678',
-    email: 'sarah.j@example.com',
-    skinType: 'Oily',
-    lastVisit: '2026-05-22',
-    totalSpent: 1820,
-    concerns: ['Acne', 'Large Pores'],
-    allergies: 'Benzoyl Peroxide',
-    notes: 'Regular client since 2024',
-  },
-  {
-    id: 3,
-    name: 'Michael Brown',
-    phone: '+1 (555) 345-6789',
-    email: 'michael.b@example.com',
-    skinType: 'Normal',
-    lastVisit: '2026-05-18',
-    totalSpent: 980,
-    concerns: ['Prevention'],
-    allergies: 'None',
-    notes: '',
-  },
-  {
-    id: 4,
-    name: 'Jessica Davis',
-    phone: '+1 (555) 456-7890',
-    email: 'jessica.d@example.com',
-    skinType: 'Combination',
-    lastVisit: '2026-05-25',
-    totalSpent: 3200,
-    concerns: ['Pigmentation', 'Uneven Tone'],
-    allergies: 'Vitamin C',
-    notes: 'VIP client - prefers appointments after 5 PM',
-  },
-  {
-    id: 5,
-    name: 'David Miller',
-    phone: '+1 (555) 567-8901',
-    email: 'david.m@example.com',
-    skinType: 'Sensitive',
-    lastVisit: '2026-05-15',
-    totalSpent: 1560,
-    concerns: ['Redness', 'Irritation'],
-    allergies: 'Fragrance, Retinol',
-    notes: 'Requires patch testing for new products',
-  },
-  {
-    id: 6,
-    name: 'Lisa Anderson',
-    phone: '+1 (555) 678-9012',
-    email: 'lisa.a@example.com',
-    skinType: 'Dry',
-    lastVisit: '2026-05-10',
-    totalSpent: 890,
-    concerns: ['Dryness', 'Dull Skin'],
-    allergies: 'None',
-    notes: '',
-  },
-];
-
-const CLIENTS_STORAGE_KEY = 'skinspectrum_clients';
-
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
 const todayDate = () => new Date().toISOString().split('T')[0];
@@ -155,7 +80,7 @@ const toBackendClientInput = (client: Omit<Client, 'id'>): BackendClientInput =>
   follow_up_days: client.followUpDays ?? null,
   follow_up_date: client.followUpDate ?? null,
   appointment_date: client.appointmentDate ?? null,
-  appointment_time: client.appointmentTime ?? null,
+  appointment_time: client.appointmentTime ? `${client.appointmentTime}:00` : null,
 });
 
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -191,13 +116,21 @@ const addDays = (date: Date, days: number) => {
   return nextDate.toISOString().split('T')[0];
 };
 
+const getTodayDateInputValue = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isPastDateInputValue = (dateValue: string) => dateValue < getTodayDateInputValue();
+
 export default function Clients() {
   const backendEnabled = canUseBackend();
-  const [clients, setClients] = useState<Client[]>(() => {
-    if (canUseBackend()) return [];
-    const savedClients = window.localStorage.getItem(CLIENTS_STORAGE_KEY);
-    return savedClients ? JSON.parse(savedClients) : initialClients;
-  });
+  const supabaseSessionActive = hasActiveSupabaseSession();
+  const [clients, setClients] = useState<Client[]>([]);
+  const [isLoading, setIsLoading] = useState(backendEnabled);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSkinType, setFilterSkinType] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
@@ -206,32 +139,24 @@ export default function Clients() {
   const [successMessage, setSuccessMessage] = useState('');
   const [backendError, setBackendError] = useState('');
 
-  useEffect(() => {
-    if (backendEnabled) return;
-    window.localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(clients));
-  }, [backendEnabled, clients]);
-
-  useEffect(() => {
+  const loadClients = useCallback(async () => {
     if (!backendEnabled) return;
-
-    let ignore = false;
-    fetchClientPageClients()
-      .then((rows) => {
-        if (!ignore) {
-          setClients(rows.map(mapBackendClient));
-          setBackendError('');
-        }
-      })
-      .catch(() => {
-        if (!ignore) {
-          setBackendError('Could not load clients from Supabase. Please run clients_backend_setup.sql and check RLS/login.');
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
+    setIsLoading(true);
+    setBackendError('');
+    try {
+      const rows = await fetchClientPageClients();
+      setClients(rows.map(mapBackendClient));
+    } catch (error) {
+      setClients([]);
+      setBackendError(parseSupabaseError(error));
+    } finally {
+      setIsLoading(false);
+    }
   }, [backendEnabled]);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
 
   const filteredClients = clients.filter(
     (client) =>
@@ -242,50 +167,76 @@ export default function Clients() {
   );
 
   const addClient = async (newClient: Omit<Client, 'id' | 'lastVisit'>) => {
-    const client: Client = {
-      ...newClient,
-      id: Date.now(),
-      lastVisit: todayDate(),
-    };
-
-    if (backendEnabled) {
-      try {
-        const savedClient = await createBackendClient(toBackendClientInput(client));
-        setClients((prev) => [mapBackendClient(savedClient), ...prev]);
-        setBackendError('');
-      } catch {
-        setBackendError('Client was not saved to Supabase. Please check your backend setup.');
-        return;
-      }
-    } else {
-      setClients((prev) => [client, ...prev]);
+    if (!supabaseSessionActive) {
+      throw new Error('Log out and sign in with your Supabase staff account to save clients.');
     }
 
-    setShowAddClient(false);
-    setSuccessMessage(`${client.name} has been added successfully!`);
-    setTimeout(() => setSuccessMessage(''), 3000);
+    setBackendError('');
+    const lastVisit = todayDate();
+
+    try {
+      const savedClient = await createBackendClient(
+        toBackendClientInput({ ...newClient, lastVisit }),
+      );
+      const mapped = mapBackendClient(savedClient);
+      setClients((prev) => [mapped, ...prev.filter((client) => client.phone !== mapped.phone)]);
+      setShowAddClient(false);
+      setSuccessMessage(`${mapped.name} has been added successfully!`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      const message = parseSupabaseError(error);
+      setBackendError(message);
+      throw new Error(message);
+    }
   };
 
   const updateClient = async (updated: Client) => {
-    let savedClient = updated;
-
-    if (backendEnabled && typeof updated.id === 'string') {
-      try {
-        const backendClient = await updateBackendClient(updated.id, toBackendClientInput(updated));
-        savedClient = mapBackendClient(backendClient);
-        setBackendError('');
-      } catch {
-        setBackendError('Client changes were not saved to Supabase. Please check your backend setup.');
-        return;
-      }
+    if (!supabaseSessionActive) {
+      throw new Error('Log out and sign in with your Supabase staff account to save clients.');
+    }
+    if (typeof updated.id !== 'string') {
+      throw new Error('This client record is invalid. Please refresh and try again.');
     }
 
-    setClients((prev) => prev.map((c) => (c.id === savedClient.id ? savedClient : c)));
-    setEditClient(null);
-    setSelectedClient(savedClient);
-    setSuccessMessage('Client updated successfully!');
-    setTimeout(() => setSuccessMessage(''), 3000);
+    setBackendError('');
+
+    try {
+      const backendClient = await updateBackendClient(updated.id, toBackendClientInput(updated));
+      const savedClient = mapBackendClient(backendClient);
+      setClients((prev) => prev.map((client) => (client.id === savedClient.id ? savedClient : client)));
+      setEditClient(null);
+      setSelectedClient(savedClient);
+      setSuccessMessage('Client updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      const message = parseSupabaseError(error);
+      setBackendError(message);
+      throw new Error(message);
+    }
   };
+
+  if (!backendEnabled) {
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <Panel className="p-6">
+          <h3 style={{ fontFamily: 'var(--font-heading)' }} className="text-lg font-semibold text-foreground">
+            Backend not configured
+          </h3>
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env to load and save clients from Supabase.
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <Panel className="p-8 text-center text-[13px] text-muted-foreground">Loading clients from Supabase…</Panel>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col pb-3 lg:h-[calc(100vh-6.75rem)]">
@@ -303,10 +254,28 @@ export default function Clients() {
       </AnimatePresence>
 
       {backendError && (
-        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
-          {backendError}
+        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[13px] font-medium text-destructive">{backendError}</p>
+          <button
+            type="button"
+            onClick={loadClients}
+            className="shrink-0 rounded-lg border border-destructive/30 px-3 py-1 text-[12px] font-semibold text-destructive hover:bg-destructive/10">
+            Retry
+          </button>
         </div>
       )}
+
+      {!supabaseSessionActive && (
+        <div className="mb-4 rounded-lg border border-[#F0A500]/20 bg-[#FFF8E8] px-4 py-2.5 text-[13px] text-[#A86F00]">
+          Clients save to Supabase only. Log out and sign in with your Supabase staff email and password (created in Supabase Dashboard → Authentication → Users).
+        </div>
+      )}
+
+      <Panel className="mb-4 shrink-0 border-[#C9A96E]/20 bg-[#C9A96E]/[0.04] p-3.5">
+        <p className="text-[12px] text-muted-foreground">
+          Clients are stored in Supabase. Use <strong className="font-medium text-foreground">Add New Client</strong> to create records, then select them on <strong className="font-medium text-foreground">POS</strong> when saving a bill.
+        </p>
+      </Panel>
 
       <Panel className="mb-4 shrink-0 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -360,8 +329,26 @@ export default function Clients() {
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground/50">
               <Users size={22} strokeWidth={1.5} />
             </div>
-            <p className="text-[14px] font-medium text-foreground">No clients found</p>
-            <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+            {clients.length === 0 ? (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No clients yet</p>
+                <p className="mt-1 max-w-[280px] text-[13px] text-muted-foreground">
+                  Click Add New Client above to create your first client in Supabase.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddClient(true)}
+                  className="mt-4 flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+                  <Plus size={16} strokeWidth={2} />
+                  Add New Client
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No clients found</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -380,7 +367,14 @@ export default function Clients() {
                   </tr>
                 </thead>
                 <tbody className="bg-card">
-                  {filteredClients.map((client) => (
+                  {filteredClients.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-10 text-center text-[13px] text-muted-foreground">
+                        No clients yet. Add a client to use them on POS and Billing.
+                      </td>
+                    </tr>
+                  ) : (
+                  filteredClients.map((client) => (
                     <tr key={client.id} className="border-b border-border/60 bg-card transition-colors last:border-0 hover:bg-muted/30">
                       <td className="px-3 py-3">
                         <div className="flex min-w-0 items-center gap-2.5">
@@ -447,7 +441,8 @@ export default function Clients() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -669,7 +664,7 @@ function ClientFormPanel({
   title: string;
   initialData?: Client;
   onClose: () => void;
-  onSubmit: (data: Omit<Client, 'id' | 'lastVisit'>) => void;
+  onSubmit: (data: Omit<Client, 'id' | 'lastVisit'>) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     name: initialData?.name || '',
@@ -684,33 +679,51 @@ function ClientFormPanel({
     notes: initialData?.notes || '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const todayDate = getTodayDateInputValue();
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = 'Name is required';
     if (!form.phone.trim()) e.phone = 'Phone is required';
     if (!form.skinType) e.skinType = 'Please select a skin type';
+    if (form.appointmentDate) {
+      const isUnchangedPast =
+        Boolean(initialData?.appointmentDate) && initialData?.appointmentDate === form.appointmentDate;
+      if (isPastDateInputValue(form.appointmentDate) && !isUnchangedPast) {
+        e.appointmentDate = 'Appointment date cannot be in the past';
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    onSubmit({
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      email: initialData?.email || '',
-      totalSpent: parseFloat(form.totalSpent) || 0,
-      followUpDays: parseInt(form.followUpDays) || undefined,
-      followUpDate: form.followUpDays ? addDays(new Date(), parseInt(form.followUpDays)) : undefined,
-      appointmentDate: form.appointmentDate || undefined,
-      appointmentTime: form.appointmentTime || undefined,
-      skinType: form.skinType,
-      concerns: form.concerns.split(',').map((c) => c.trim()).filter(Boolean),
-      allergies: form.allergies.trim() || 'None',
-      notes: form.notes.trim(),
-    });
+    setIsSubmitting(true);
+    setSubmitError('');
+    try {
+      await onSubmit({
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: initialData?.email || '',
+        totalSpent: parseFloat(form.totalSpent) || 0,
+        followUpDays: parseInt(form.followUpDays, 10) || undefined,
+        followUpDate: form.followUpDays ? addDays(new Date(), parseInt(form.followUpDays, 10)) : undefined,
+        appointmentDate: form.appointmentDate || undefined,
+        appointmentTime: form.appointmentTime || undefined,
+        skinType: form.skinType,
+        concerns: form.concerns.split(',').map((c) => c.trim()).filter(Boolean),
+        allergies: form.allergies.trim() || 'None',
+        notes: form.notes.trim(),
+      });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not save client. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -742,6 +755,11 @@ function ClientFormPanel({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+        {submitError && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-[13px] text-destructive">
+            {submitError}
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[12px] font-medium text-foreground">Full Name *</label>
@@ -804,9 +822,27 @@ function ClientFormPanel({
             <input
               type="date"
               value={form.appointmentDate}
-              onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+              min={todayDate}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setForm({ ...form, appointmentDate: nextDate });
+                if (nextDate && isPastDateInputValue(nextDate)) {
+                  setErrors((prev) => ({ ...prev, appointmentDate: 'Appointment date cannot be in the past' }));
+                } else {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.appointmentDate;
+                    return next;
+                  });
+                }
+              }}
+              className={`h-9 w-full rounded-lg border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 ${
+                errors.appointmentDate
+                  ? 'border-destructive/50 focus:ring-destructive/15'
+                  : 'border-border focus:border-primary/40 focus:ring-primary/15'
+              }`}
             />
+            {errors.appointmentDate && <p className="mt-1 text-[11px] text-destructive">{errors.appointmentDate}</p>}
           </div>
           <div>
             <label className="mb-1.5 block text-[12px] font-medium text-foreground">Appointment Time</label>
@@ -882,8 +918,9 @@ function ClientFormPanel({
           </button>
           <button
             type="submit"
-            className="flex-1 rounded-lg bg-primary py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
-            {initialData ? 'Save Changes' : 'Add Client'}
+            disabled={isSubmitting}
+            className="flex-1 rounded-lg bg-primary py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70">
+            {isSubmitting ? 'Saving…' : initialData ? 'Save Changes' : 'Add Client'}
           </button>
         </div>
       </form>

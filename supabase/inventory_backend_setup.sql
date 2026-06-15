@@ -6,6 +6,8 @@
 -- 4) supabase/clients_backend_setup.sql
 -- 5) supabase/pos_backend_setup.sql
 -- 6) supabase/billing_backend_setup.sql
+--
+-- Products are added from the app (Inventory -> Add Product), not seeded here.
 
 alter table public.products
   add column if not exists code text,

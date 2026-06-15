@@ -1,5 +1,7 @@
--- Notifications page backend setup for Skin Spectrum
--- Run this AFTER all previous setup files.
+-- Fix Notifications page backend (run in Supabase SQL Editor)
+-- Same as notifications_backend_setup.sql with dismissals table, security_invoker = false, and grants.
+
+delete from public.notifications where category = 'System';
 
 create table if not exists public.notification_dismissals (
   id uuid primary key default gen_random_uuid(),

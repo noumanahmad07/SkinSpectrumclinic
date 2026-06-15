@@ -9,6 +9,7 @@ import {
   loadSettings,
   patchSettings,
   updateUserPassword,
+  SETTINGS_UPDATED_EVENT,
   type BillingSettings,
   type ClinicSettings,
   type PaymentMethods,
@@ -19,17 +20,23 @@ import {
 } from '../lib/settings';
 import {
   canUseBackend,
+  canWriteToBackend,
+  createStaffUserInBackend,
   deleteBackendBillPerson,
   deleteBackendStaffProfile,
   fetchSettingsData,
   mapBackendSettings,
+  mapStaffProfileToUser,
+  parseSupabaseError,
   saveBackendBillingSettings,
   saveBackendClinicSettings,
   saveBackendNotificationSettings,
   saveBackendSecuritySettings,
+  updateBackendStaffPassword,
   updateBackendStaffProfile,
   upsertBackendBillPerson,
 } from '../lib/backend';
+import { hasActiveSupabaseSession } from '../lib/supabase';
 
 const fieldClass =
   'h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15';
@@ -69,6 +76,9 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('clinic');
   const toast = useSuccessToast();
+  const backendEnabled = canUseBackend();
+  const backendSyncEnabled = backendEnabled && hasActiveSupabaseSession();
+  const [backendWarning, setBackendWarning] = useState('');
 
   const tabs: { id: string; label: string; Icon: LucideIcon }[] = [
     { id: 'clinic', label: 'Clinic Info', Icon: Building2 },
@@ -86,6 +96,65 @@ export default function Settings() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!backendSyncEnabled) {
+      setBackendWarning('');
+      return;
+    }
+
+    let ignore = false;
+    fetchSettingsData()
+      .then(({ clinicSettings, staffProfiles, billPersons, errors }) => {
+        if (ignore) return;
+
+        if (clinicSettings) {
+          const mapped = mapBackendSettings(clinicSettings);
+          const existingBillPersons = loadSettings().billPersons;
+          patchSettings({
+            clinic: mapped.clinic,
+            billing: mapped.billing,
+            notifications: mapped.notifications,
+            security: mapped.security,
+            users: staffProfiles.map(mapStaffProfileToUser),
+            billPersons: billPersons.map((person) => ({
+              id: person.id,
+              name: person.name,
+              password: existingBillPersons.find((entry) => String(entry.id) === String(person.id))?.password || '',
+              status: person.status,
+            })),
+          });
+        } else {
+          const existingBillPersons = loadSettings().billPersons;
+          patchSettings({
+            users: staffProfiles.map(mapStaffProfileToUser),
+            billPersons: billPersons.map((person) => ({
+              id: person.id,
+              name: person.name,
+              password: existingBillPersons.find((entry) => String(entry.id) === String(person.id))?.password || '',
+              status: person.status,
+            })),
+          });
+        }
+
+        if (errors.length > 0) {
+          setBackendWarning(errors.join(' '));
+        } else if (!clinicSettings) {
+          setBackendWarning('No clinic settings row found in Supabase. Run supabase/seed.sql in the SQL Editor.');
+        } else {
+          setBackendWarning('');
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setBackendWarning(parseSupabaseError(error));
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendSyncEnabled]);
+
   return (
     <div className="mx-auto max-w-[1400px] space-y-4 pb-3">
       <AnimatePresence>
@@ -100,6 +169,18 @@ export default function Settings() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendEnabled && !backendSyncEnabled && (
+        <div className="rounded-lg border border-[#F0A500]/30 bg-[#F0A500]/10 px-4 py-3 text-[13px] text-[#A86F00]">
+          Supabase is configured but you are not signed in with a Supabase session. Settings are loaded from this browser only.
+        </div>
+      )}
+
+      {backendWarning && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
+          {backendWarning}
+        </div>
+      )}
 
       <Panel className="p-1.5">
         <div className="flex gap-1 overflow-x-auto scroll-area">
@@ -248,25 +329,18 @@ function DeleteConfirmModal({
 }
 
 function ClinicInfoTab({ onSave }: { onSave: (msg: string) => void }) {
-  const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const [form, setForm] = useState<ClinicSettings>(() => loadSettings().clinic);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ clinicSettings }) => {
-        if (clinicSettings) {
-          const mapped = mapBackendSettings(clinicSettings);
-          setForm(mapped.clinic);
-          patchSettings({ clinic: mapped.clinic });
-        }
-      })
-      .catch(() => onSave('Could not load clinic settings from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => setForm(loadSettings().clinic);
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const handleSave = async () => {
-    if (backendEnabled) {
+    if (backendWritable) {
       await saveBackendClinicSettings(form);
     }
     patchSettings({ clinic: form });
@@ -354,24 +428,17 @@ function ClinicInfoTab({ onSave }: { onSave: (msg: string) => void }) {
 }
 
 function BillingTab({ onSave }: { onSave: (msg: string) => void }) {
-  const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const [form, setForm] = useState<BillingSettings>(() => loadSettings().billing);
 
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ clinicSettings }) => {
-        if (clinicSettings) {
-          const mapped = mapBackendSettings(clinicSettings);
-          setForm(mapped.billing);
-          patchSettings({ billing: mapped.billing });
-        }
-      })
-      .catch(() => onSave('Could not load billing settings from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => setForm(loadSettings().billing);
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const handleSave = async () => {
-    if (backendEnabled) {
+    if (backendWritable) {
       await saveBackendBillingSettings(form);
     }
     patchSettings({ billing: form });
@@ -432,7 +499,7 @@ function BillingTab({ onSave }: { onSave: (msg: string) => void }) {
 }
 
 function NotificationsTab({ onSave }: { onSave: (msg: string) => void }) {
-  const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const saved = loadSettings().notifications;
   const [whatsappEnabled, setWhatsappEnabled] = useState(saved.whatsappEnabled);
   const [emailEnabled, setEmailEnabled] = useState(saved.emailEnabled);
@@ -440,24 +507,20 @@ function NotificationsTab({ onSave }: { onSave: (msg: string) => void }) {
   const [emailItems, setEmailItems] = useState(saved.emailItems);
 
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ clinicSettings }) => {
-        if (clinicSettings) {
-          const mapped = mapBackendSettings(clinicSettings);
-          setWhatsappEnabled(mapped.notifications.whatsappEnabled);
-          setEmailEnabled(mapped.notifications.emailEnabled);
-          setWhatsappItems(mapped.notifications.whatsappItems);
-          setEmailItems(mapped.notifications.emailItems);
-          patchSettings({ notifications: mapped.notifications });
-        }
-      })
-      .catch(() => onSave('Could not load notification settings from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => {
+      const notifications = loadSettings().notifications;
+      setWhatsappEnabled(notifications.whatsappEnabled);
+      setEmailEnabled(notifications.emailEnabled);
+      setWhatsappItems(notifications.whatsappItems);
+      setEmailItems(notifications.emailItems);
+    };
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const handleSave = async () => {
     const notifications = { whatsappEnabled, emailEnabled, whatsappItems, emailItems };
-    if (backendEnabled) {
+    if (backendWritable) {
       await saveBackendNotificationSettings(notifications);
     }
     patchSettings({
@@ -562,8 +625,9 @@ function UserFormModal({
     status: user?.status || ('Active' as UserAccount['status']),
   });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
       setError('Name is required');
@@ -584,11 +648,33 @@ function UserFormModal({
     setError('');
     const password = user ? (form.password.trim() || user.password) : form.password;
     const passwordChangedAt = form.password.trim() || !user ? new Date().toISOString() : user.passwordChangedAt;
-    onSubmit(
-      user
-        ? { name: form.name, email: form.email, password, passwordChangedAt, role: form.role, status: form.status, id: user.id }
-        : { name: form.name, email: form.email, password, passwordChangedAt, role: form.role, status: form.status },
-    );
+    try {
+      setIsSubmitting(true);
+      await onSubmit(
+        user
+          ? {
+              name: form.name.trim(),
+              email: form.email.trim().toLowerCase(),
+              password,
+              passwordChangedAt,
+              role: form.role,
+              status: form.status,
+              id: user.id,
+            }
+          : {
+              name: form.name.trim(),
+              email: form.email.trim().toLowerCase(),
+              password,
+              passwordChangedAt,
+              role: form.role,
+              status: form.status,
+            },
+      );
+    } catch (submitError) {
+      setError(parseSupabaseError(submitError));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -679,8 +765,11 @@ function UserFormModal({
             <button type="button" onClick={onClose} className="h-9 flex-1 rounded-lg border border-border text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted">
               Cancel
             </button>
-            <button type="submit" className="h-9 flex-1 rounded-lg bg-primary text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
-              {user ? 'Save Changes' : 'Add User'}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="h-9 flex-1 rounded-lg bg-primary text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60">
+              {isSubmitting ? 'Saving...' : user ? 'Save Changes' : 'Add User'}
             </button>
           </div>
         </form>
@@ -692,47 +781,72 @@ function UserFormModal({
 
 function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
   const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const [users, setUsers] = useState<UserAccount[]>(() => loadSettings().users);
   const [showAddUser, setShowAddUser] = useState(false);
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
   const [deleteUser, setDeleteUser] = useState<UserAccount | null>(null);
 
+  const reloadUsersFromBackend = async () => {
+    const { staffProfiles } = await fetchSettingsData();
+    const backendUsers = staffProfiles.map(mapStaffProfileToUser);
+    setUsers(backendUsers);
+    patchSettings({ users: backendUsers });
+    return backendUsers;
+  };
+
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ staffProfiles }) => {
-        const backendUsers: UserAccount[] = staffProfiles.map((profile) => ({
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          password: '',
-          passwordChangedAt: profile.password_changed_at ?? undefined,
-          role: profile.role,
-          status: profile.status,
-        }));
-        setUsers(backendUsers);
-        patchSettings({ users: backendUsers });
-      })
-      .catch(() => onSave('Could not load users from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => setUsers(loadSettings().users);
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const persistUsers = (nextUsers: UserAccount[]) => {
     setUsers(nextUsers);
     patchSettings({ users: nextUsers });
   };
 
-  const handleAddUser = (data: Omit<UserAccount, 'id'>) => {
+  const handleAddUser = async (data: Omit<UserAccount, 'id'>) => {
+    if (backendWritable) {
+      if (!canWriteToBackend()) {
+        throw new Error('Sign in with Supabase to add user accounts.');
+      }
+      await createStaffUserInBackend({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        status: data.status,
+      });
+      await reloadUsersFromBackend();
+      setShowAddUser(false);
+      onSave('User added to Supabase. They can sign in with their email and password.');
+      return;
+    }
+
     const numericIds = users.map((u) => (typeof u.id === 'number' ? u.id : 0));
     const nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
-    persistUsers([...users, { ...data, id: nextId }]);
+    const newUser: UserAccount = {
+      ...data,
+      id: nextId,
+      email: data.email.trim().toLowerCase(),
+    };
+    persistUsers([...users, newUser]);
     setShowAddUser(false);
-    onSave(backendEnabled ? 'User saved locally. Create their Supabase Auth account to enable login.' : 'User added successfully!');
+    onSave('User added successfully!');
   };
 
   const handleUpdateUser = async (data: Omit<UserAccount, 'id'> & { id?: number | string }) => {
     if (data.id == null) return;
-    if (backendEnabled && typeof data.id === 'string') {
+    if (backendWritable && typeof data.id === 'string') {
+      if (!canWriteToBackend()) {
+        throw new Error('Sign in with Supabase to update user accounts.');
+      }
       await updateBackendStaffProfile({ ...data, id: data.id });
+      await reloadUsersFromBackend();
+      setEditUser(null);
+      onSave('User updated successfully!');
+      return;
     }
     persistUsers(users.map((u) => (u.id === data.id ? { ...data, id: data.id } : u)));
     setEditUser(null);
@@ -741,8 +855,16 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
 
   const handleDeleteUser = async () => {
     if (!deleteUser) return;
-    if (backendEnabled && typeof deleteUser.id === 'string') {
+    if (backendWritable && typeof deleteUser.id === 'string') {
+      if (!canWriteToBackend()) {
+        onSave('Sign in with Supabase to delete user accounts.');
+        return;
+      }
       await deleteBackendStaffProfile(deleteUser.id);
+      await reloadUsersFromBackend();
+      setDeleteUser(null);
+      onSave('User removed from staff profiles.');
+      return;
     }
     persistUsers(users.filter((user) => user.id !== deleteUser.id));
     setDeleteUser(null);
@@ -829,9 +951,11 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
       <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-border bg-background p-3">
         <Lock size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-muted-foreground" />
         <div>
-          <div className="text-[13px] font-medium text-foreground">Staff access only</div>
+          <div className="text-[13px] font-medium text-foreground">Staff login</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            Only authorized staff with @skinspectrum.com emails can access this system.
+            {backendEnabled
+              ? 'Users are loaded from Supabase. Adding a user creates their Supabase Auth account and staff profile. Email must be @skinspectrum.com and status must be Active to sign in.'
+              : 'Users added here can sign in on the login page with their email and password. Email must be @skinspectrum.com and status must be Active.'}
           </div>
         </div>
       </div>
@@ -847,7 +971,7 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
           <DeleteConfirmModal
             key={`delete-user-${deleteUser.id}`}
             title="Delete User Account?"
-            message={`Delete ${deleteUser.name} from user accounts? This removes their staff profile from the app.`}
+            message={`Delete ${deleteUser.name} from user accounts? This removes their staff profile${backendEnabled ? ' from Supabase' : ''}.`}
             confirmLabel="Delete User"
             onClose={() => setDeleteUser(null)}
             onConfirm={handleDeleteUser}
@@ -980,27 +1104,17 @@ function BillPersonFormModal({
 }
 
 function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
-  const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const [billPersons, setBillPersons] = useState<BillPerson[]>(() => loadSettings().billPersons);
   const [showAdd, setShowAdd] = useState(false);
   const [editPerson, setEditPerson] = useState<BillPerson | null>(null);
   const [deletePerson, setDeletePerson] = useState<BillPerson | null>(null);
 
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ billPersons: backendPersons }) => {
-        const nextPersons: BillPerson[] = backendPersons.map((person) => ({
-          id: person.id,
-          name: person.name,
-          password: '',
-          status: person.status,
-        }));
-        setBillPersons(nextPersons);
-        patchSettings({ billPersons: nextPersons });
-      })
-      .catch(() => onSave('Could not load bill persons from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => setBillPersons(loadSettings().billPersons);
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const persist = (next: BillPerson[]) => {
     setBillPersons(next);
@@ -1009,7 +1123,7 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
 
   const handleAdd = async (data: Omit<BillPerson, 'id'>) => {
     try {
-      if (backendEnabled) {
+      if (backendWritable) {
         const savedPerson = await upsertBackendBillPerson(data);
         persist([...billPersons, { ...data, id: savedPerson.id }]);
       } else {
@@ -1027,7 +1141,7 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
   const handleUpdate = async (data: Omit<BillPerson, 'id'> & { id?: number | string }) => {
     if (data.id == null) return;
     try {
-      if (backendEnabled) {
+      if (backendWritable) {
         await upsertBackendBillPerson(data);
       }
       persist(billPersons.map((p) => (p.id === data.id ? { ...data, id: data.id } : p)));
@@ -1041,7 +1155,7 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
   const handleDelete = async () => {
     if (!deletePerson) return;
     try {
-      if (backendEnabled && typeof deletePerson.id === 'string') {
+      if (backendWritable && typeof deletePerson.id === 'string') {
         await deleteBackendBillPerson(deletePerson.id);
       }
       persist(billPersons.filter((entry) => entry.id !== deletePerson.id));
@@ -1154,51 +1268,37 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
 }
 
 function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
-  const backendEnabled = canUseBackend();
+  const backendWritable = canWriteToBackend();
   const { user, clearPasswordReminder } = useAuth();
   const saved = loadSettings().security;
   const [form, setForm] = useState({
     current: '',
     newPass: '',
     confirm: '',
-    timeout: saved.timeout,
     forceChange: saved.forceChange,
   });
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!backendEnabled) return;
-    fetchSettingsData()
-      .then(({ clinicSettings }) => {
-        if (clinicSettings) {
-          const mapped = mapBackendSettings(clinicSettings);
-          setForm((prev) => ({
-            ...prev,
-            timeout: mapped.security.timeout,
-            forceChange: mapped.security.forceChange,
-          }));
-          patchSettings({ security: mapped.security });
-        }
-      })
-      .catch(() => onSave('Could not load security settings from Supabase'));
-  }, [backendEnabled]);
+    const refresh = () => {
+      const security = loadSettings().security;
+      setForm((prev) => ({ ...prev, forceChange: security.forceChange }));
+    };
+    window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
+  }, []);
 
   const handleSaveSecurity = async () => {
-    const minutes = parseInt(form.timeout, 10);
-    if (!Number.isFinite(minutes) || minutes < 5) {
-      setError('Session timeout must be at least 5 minutes');
-      return;
-    }
     setError('');
-    const security = { timeout: form.timeout, forceChange: form.forceChange };
-    if (backendEnabled) {
+    const security = { forceChange: form.forceChange };
+    if (backendWritable) {
       await saveBackendSecuritySettings(security);
     }
     patchSettings({ security });
     onSave('Security settings saved!');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!user?.email) {
       setError('You must be signed in to update your password');
       return;
@@ -1216,17 +1316,36 @@ function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
       return;
     }
 
-    const result = updateUserPassword(user.email, form.current, form.newPass);
-    if (!result.success) {
-      setError(result.error);
-      return;
+    const security = { forceChange: form.forceChange };
+
+    if (backendWritable) {
+      const backendResult = await updateBackendStaffPassword(user.email, form.current, form.newPass);
+      if (!backendResult.success) {
+        const localResult = updateUserPassword(user.email, form.current, form.newPass);
+        if (!localResult.success) {
+          setError(backendResult.error);
+          return;
+        }
+        patchSettings({ security });
+      } else {
+        const settings = loadSettings();
+        const updatedUsers = settings.users.map((account) =>
+          account.email.toLowerCase() === user.email.toLowerCase()
+            ? { ...account, password: form.newPass, passwordChangedAt: new Date().toISOString() }
+            : account,
+        );
+        patchSettings({ users: updatedUsers, security });
+        await saveBackendSecuritySettings(security).catch(() => undefined);
+      }
+    } else {
+      const result = updateUserPassword(user.email, form.current, form.newPass);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      patchSettings({ security });
     }
 
-    const security = { timeout: form.timeout, forceChange: form.forceChange };
-    if (backendEnabled) {
-      saveBackendSecuritySettings(security).catch(() => undefined);
-    }
-    patchSettings({ security });
     clearPasswordReminder();
     setError('');
     setForm({ ...form, current: '', newPass: '', confirm: '' });
@@ -1281,12 +1400,6 @@ function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
               className={fieldClass}
             />
           </div>
-        </div>
-
-        <div className="border-t border-border pt-4">
-          <label className={labelClass}>Session Timeout (minutes)</label>
-          <input type="number" min="5" value={form.timeout} onChange={(e) => setForm({ ...form, timeout: e.target.value })} className={`${fieldClass} max-w-[160px]`} />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">Users are logged out after this period of inactivity</p>
         </div>
 
         <div className="rounded-lg border border-border bg-background p-3">

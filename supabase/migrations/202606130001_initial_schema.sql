@@ -1,4 +1,5 @@
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 do $$ begin
   create type public.staff_role as enum ('Admin', 'Staff', 'Manager');
@@ -199,11 +200,40 @@ drop policy if exists "authenticated staff can read staff profiles" on public.st
 create policy "authenticated staff can read staff profiles" on public.staff_profiles
   for select to authenticated using (true);
 
+create or replace function public.is_active_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.staff_profiles
+    where id = auth.uid()
+      and role = 'Admin'
+      and status = 'Active'
+  );
+$$;
+
+revoke all on function public.is_active_admin() from public;
+grant execute on function public.is_active_admin() to authenticated;
+
 drop policy if exists "admins can manage staff profiles" on public.staff_profiles;
 create policy "admins can manage staff profiles" on public.staff_profiles
-  for all to authenticated
-  using (exists (select 1 from public.staff_profiles sp where sp.id = auth.uid() and sp.role = 'Admin' and sp.status = 'Active'))
-  with check (exists (select 1 from public.staff_profiles sp where sp.id = auth.uid() and sp.role = 'Admin' and sp.status = 'Active'));
+  for insert to authenticated
+  with check (public.is_active_admin());
+
+drop policy if exists "admins can update staff profiles" on public.staff_profiles;
+create policy "admins can update staff profiles" on public.staff_profiles
+  for update to authenticated
+  using (public.is_active_admin())
+  with check (public.is_active_admin());
+
+drop policy if exists "admins can delete staff profiles" on public.staff_profiles;
+create policy "admins can delete staff profiles" on public.staff_profiles
+  for delete to authenticated
+  using (public.is_active_admin());
 
 drop policy if exists "authenticated staff can manage bill persons" on public.bill_persons;
 create policy "authenticated staff can manage bill persons" on public.bill_persons

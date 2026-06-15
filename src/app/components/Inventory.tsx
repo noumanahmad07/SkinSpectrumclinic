@@ -517,8 +517,25 @@ export default function Inventory() {
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground/50">
               <Package size={22} strokeWidth={1.5} />
             </div>
-            <p className="text-[14px] font-medium text-foreground">No products found</p>
-            <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+            {inventory.length === 0 ? (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No products yet</p>
+                <p className="mt-1 max-w-[280px] text-[13px] text-muted-foreground">
+                  Click Add Product above to create inventory items in Supabase.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddProduct(true)}
+                  className="mt-4 flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+                  Add Product
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[14px] font-medium text-foreground">No products found</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">Try adjusting your search or filters</p>
+              </>
+            )}
           </div>
         ) : viewMode === 'grid' ? (
           <div className="h-full overflow-y-auto scroll-area p-3 md:p-4">

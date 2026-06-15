@@ -28,7 +28,6 @@ select
   status,
   image
 from public.products
-where status = 'Active'
 order by category asc, name asc;
 
 create or replace view public.pos_clients

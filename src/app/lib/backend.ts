@@ -1,4 +1,4 @@
-import { database, isSupabaseConfigured } from './supabase';
+import { database, hasActiveSupabaseSession, isSupabaseConfigured, signUpStaffUser } from './supabase';
 import type { Invoice } from './invoices';
 import type {
   BillingSettings,
@@ -230,6 +230,10 @@ export function canUseBackend() {
   return isSupabaseConfigured();
 }
 
+export function canWriteToBackend() {
+  return canUseBackend() && hasActiveSupabaseSession();
+}
+
 export async function fetchClients() {
   return database.select<BackendClient>('clients', 'select=*&order=created_at.desc');
 }
@@ -239,12 +243,20 @@ export async function fetchClientPageClients() {
 }
 
 export async function createBackendClient(client: BackendClientInput) {
-  const [savedClient] = await database.insert<BackendClient>('clients', [client]);
+  const rows = await database.insert<BackendClient>('clients', [client]);
+  const savedClient = rows[0];
+  if (!savedClient) {
+    throw new Error('Supabase did not return the saved client.');
+  }
   return savedClient;
 }
 
 export async function updateBackendClient(id: string, client: Partial<BackendClientInput>) {
-  const [savedClient] = await database.update<BackendClient>('clients', `id=eq.${id}`, client);
+  const rows = await database.update<BackendClient>('clients', `id=eq.${id}`, client);
+  const savedClient = rows[0];
+  if (!savedClient) {
+    throw new Error('Supabase did not return the updated client.');
+  }
   return savedClient;
 }
 
@@ -279,7 +291,8 @@ export async function fetchPosClients() {
 }
 
 export async function signInStaff(email: string, password: string) {
-  const session = await database.signInWithPassword(email, password);
+  const normalizedEmail = email.trim().toLowerCase();
+  const session = await database.signInWithPassword(normalizedEmail, password);
   const [profile] = await database.select<BackendStaffProfile>(
     'staff_profiles',
     `select=*&id=eq.${session.user.id}&limit=1`,
@@ -290,10 +303,79 @@ export async function signInStaff(email: string, password: string) {
     return null;
   }
 
+  window.sessionStorage.removeItem('skinspectrum_dismissals_backend');
+
   return {
     session,
     profile,
   };
+}
+
+export function parseSupabaseError(error: unknown): string {
+  if (!(error instanceof Error) || !error.message) return 'Supabase request failed. Please try again.';
+
+  try {
+    const parsed = JSON.parse(error.message) as {
+      msg?: string;
+      message?: string;
+      error_description?: string;
+      error?: string;
+      code?: string;
+    };
+    const detail = parsed.msg || parsed.message || parsed.error_description || parsed.error;
+    if (detail?.includes('row-level security') || parsed.code === '42501') {
+      return 'Permission denied. Log out and sign in with your Supabase staff account.';
+    }
+    if (parsed.code === 'user_already_exists' || detail?.toLowerCase().includes('already registered')) {
+      return 'This email already exists in Supabase Auth. Use a different email or add the staff profile from the Supabase dashboard.';
+    }
+    return detail || error.message;
+  } catch {
+    if (error.message.includes('row-level security') || error.message.includes('42501')) {
+      return 'Permission denied. Log out and sign in with your Supabase staff account.';
+    }
+    return error.message;
+  }
+}
+
+function parseSupabaseAuthError(error: unknown): string {
+  return parseSupabaseError(error);
+}
+
+export async function updateBackendStaffPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  if (newPassword.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters' };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    const session = await database.signInWithPassword(normalizedEmail, currentPassword);
+    await database.updatePassword(session.access_token, newPassword);
+
+    await database.update<BackendStaffProfile>(
+      'staff_profiles',
+      `id=eq.${session.user.id}`,
+      { password_changed_at: new Date().toISOString() },
+    );
+
+    await database.signInWithPassword(normalizedEmail, newPassword);
+    return { success: true };
+  } catch (error) {
+    const detail = parseSupabaseAuthError(error).toLowerCase();
+    if (
+      detail.includes('invalid login credentials') ||
+      detail.includes('invalid_grant') ||
+      detail.includes('invalid email or password')
+    ) {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+    return { success: false, error: parseSupabaseAuthError(error) };
+  }
 }
 
 export async function fetchInvoices() {
@@ -355,18 +437,7 @@ export async function fetchDashboardData() {
 }
 
 export async function fetchReportsData() {
-  const [
-    summaryRows,
-    today,
-    week,
-    month,
-    custom,
-    categorySales,
-    clientGrowth,
-    paymentMethods,
-    topProducts,
-    topClients,
-  ] = await Promise.all([
+  const results = await Promise.allSettled([
     database.select<ReportSummary>('reports_summary', 'select=*'),
     database.select<ReportRevenuePoint>('reports_revenue_today', 'select=*'),
     database.select<ReportRevenuePoint>('reports_revenue_week', 'select=*'),
@@ -379,8 +450,32 @@ export async function fetchReportsData() {
     database.select<ReportTopClient>('reports_top_clients', 'select=*'),
   ]);
 
+  const errors: string[] = [];
+  const readRows = <T,>(index: number, label: string): T[] => {
+    const result = results[index];
+    if (result.status === 'fulfilled') return result.value;
+    errors.push(formatReportsLoadError(label, result.reason));
+    return [];
+  };
+
+  const summaryRows = readRows<ReportSummary>(0, 'Reports summary');
+  const today = readRows<ReportRevenuePoint>(1, 'Today revenue');
+  const week = readRows<ReportRevenuePoint>(2, 'Week revenue');
+  const month = readRows<ReportRevenuePoint>(3, 'Month revenue');
+  const custom = readRows<ReportRevenuePoint>(4, 'Custom revenue');
+  const categorySales = readRows<ReportCategorySale>(5, 'Category sales');
+  const clientGrowth = readRows<ReportClientGrowth>(6, 'Client growth');
+  const paymentMethods = readRows<ReportPaymentMethod>(7, 'Payment methods');
+  const topProducts = readRows<ReportTopProduct>(8, 'Top products');
+  const topClients = readRows<ReportTopClient>(9, 'Top clients');
+
   return {
-    summary: summaryRows[0] ?? null,
+    summary: summaryRows[0] ?? {
+      total_revenue: 0,
+      transactions: 0,
+      new_clients: 0,
+      avg_order: 0,
+    },
     revenue: {
       today,
       week,
@@ -392,7 +487,19 @@ export async function fetchReportsData() {
     paymentMethods,
     topProducts,
     topClients,
+    errors,
   };
+}
+
+function formatReportsLoadError(label: string, error: unknown) {
+  const message = parseSupabaseError(error);
+  if (/does not exist|PGRST205|404/.test(message)) {
+    return `${label} could not load. Run supabase/reports_backend_setup.sql (or supabase/fix_reports_backend.sql) in the Supabase SQL Editor.`;
+  }
+  if (/row-level security|permission denied|401|jwt|not authenticated/i.test(message)) {
+    return `${label} could not load. Sign out and sign in again with your Supabase staff account.`;
+  }
+  return `${label} could not load. ${message}`;
 }
 
 export function mapBackendSettings(row: BackendClinicSettings) {
@@ -411,22 +518,53 @@ export function mapBackendSettings(row: BackendClinicSettings) {
       methods: row.payment_methods,
     } satisfies BillingSettings,
     notifications: row.notification_settings,
-    security: row.security_settings,
+    security: {
+      forceChange: row.security_settings?.forceChange ?? true,
+    } satisfies SecuritySettings,
   };
 }
 
 export async function fetchSettingsData() {
-  const [clinicRows, staffRows, billPersonRows] = await Promise.all([
+  const [clinicResult, staffResult, billPersonResult] = await Promise.allSettled([
     database.select<BackendClinicSettings>('settings_clinic', 'select=*'),
     database.select<BackendStaffProfile>('settings_staff_profiles', 'select=*'),
     database.select<BackendBillPersonPublic>('settings_bill_persons', 'select=*'),
   ]);
 
+  const errors: string[] = [];
+
+  const clinicRows = clinicResult.status === 'fulfilled' ? clinicResult.value : [];
+  if (clinicResult.status === 'rejected') {
+    errors.push(formatSettingsLoadError('Clinic settings', clinicResult.reason));
+  }
+
+  const staffRows = staffResult.status === 'fulfilled' ? staffResult.value : [];
+  if (staffResult.status === 'rejected') {
+    errors.push(formatSettingsLoadError('User accounts', staffResult.reason));
+  }
+
+  const billPersonRows = billPersonResult.status === 'fulfilled' ? billPersonResult.value : [];
+  if (billPersonResult.status === 'rejected') {
+    errors.push(formatSettingsLoadError('Bill persons', billPersonResult.reason));
+  }
+
   return {
     clinicSettings: clinicRows[0] ?? null,
     staffProfiles: staffRows,
     billPersons: billPersonRows,
+    errors,
   };
+}
+
+function formatSettingsLoadError(scope: string, error: unknown) {
+  const message = parseSupabaseError(error);
+  if (/does not exist|PGRST205|404/.test(message)) {
+    return `${scope} could not load. Run supabase/settings_backend_setup.sql in the Supabase SQL Editor.`;
+  }
+  if (/row-level security|permission denied|401|jwt|not authenticated/i.test(message)) {
+    return `${scope} could not load. Sign out and sign in again with your Supabase staff account.`;
+  }
+  return `${scope} could not load. ${message}`;
 }
 
 async function updateClinicSettingsPatch(patch: Partial<BackendClinicSettings>) {
@@ -489,6 +627,64 @@ export async function deleteBackendStaffProfile(id: string) {
   return database.delete('staff_profiles', `id=eq.${id}`);
 }
 
+export function mapStaffProfileToUser(profile: BackendStaffProfile): UserAccount {
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email.toLowerCase(),
+    password: '',
+    passwordChangedAt: profile.password_changed_at ?? undefined,
+    role: profile.role,
+    status: profile.status,
+  };
+}
+
+export async function createStaffUserInBackend(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: UserAccount['role'];
+  status: UserAccount['status'];
+}): Promise<UserAccount> {
+  const email = input.email.trim().toLowerCase();
+  const authUser = await signUpStaffUser(email, input.password, {
+    name: input.name.trim(),
+    role: input.role,
+  });
+
+  const [existing] = await database.select<BackendStaffProfile>(
+    'staff_profiles',
+    `select=*&id=eq.${authUser.id}&limit=1`,
+  );
+
+  if (existing) {
+    const rows = await database.update<BackendStaffProfile>(
+      'staff_profiles',
+      `id=eq.${authUser.id}`,
+      {
+        name: input.name.trim(),
+        email,
+        role: input.role,
+        status: input.status,
+      },
+    );
+    return mapStaffProfileToUser(rows[0] ?? existing);
+  }
+
+  const rows = await database.insert<BackendStaffProfile>('staff_profiles', [{
+    id: authUser.id,
+    name: input.name.trim(),
+    email,
+    role: input.role,
+    status: input.status,
+    password_changed_at: new Date().toISOString(),
+  }]);
+  if (!rows[0]) {
+    throw new Error('Could not create staff profile in Supabase.');
+  }
+  return mapStaffProfileToUser(rows[0]);
+}
+
 export async function upsertBackendBillPerson(person: Omit<BillPerson, 'id'> & { id?: string | number }) {
   const [savedPerson] = await database.rpc<BackendBillPersonPublic>('upsert_bill_person', {
     person_id: typeof person.id === 'string' ? person.id : null,
@@ -510,18 +706,145 @@ export async function verifyBackendBillPerson(personId: string, password: string
   });
 }
 
+export const NOTIFICATIONS_UPDATED_EVENT = 'skinspectrum_notifications_updated';
+const DISMISSED_NOTIFICATIONS_KEY = 'skinspectrum_dismissed_notifications';
+const DISMISSALS_BACKEND_PROBE_KEY = 'skinspectrum_dismissals_backend';
+
+function isSupabaseMissingResource(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('404')
+    || message.includes('pgrst205')
+    || message.includes('does not exist')
+    || message.includes('could not find the table')
+  );
+}
+
+function readLocalDismissals(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addLocalDismissal(notificationKey: string) {
+  const dismissed = readLocalDismissals();
+  dismissed.add(notificationKey);
+  window.localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify([...dismissed]));
+}
+
+function shouldSkipDismissalsBackendFetch(): boolean {
+  return window.sessionStorage.getItem(DISMISSALS_BACKEND_PROBE_KEY) !== 'ready';
+}
+
+function markDismissalsBackendUnavailable() {
+  window.sessionStorage.setItem(DISMISSALS_BACKEND_PROBE_KEY, 'unavailable');
+}
+
+function markDismissalsBackendReady() {
+  window.sessionStorage.setItem(DISMISSALS_BACKEND_PROBE_KEY, 'ready');
+}
+
+function isHiddenNotification(row: BackendNotification): boolean {
+  if (row.category === 'System') return true;
+  const title = row.title.trim().toLowerCase();
+  const message = row.message.trim().toLowerCase();
+  return title === 'system ready' || message.includes('backend schema has been initialized');
+}
+
+async function fetchDismissedNotificationKeys(): Promise<Set<string>> {
+  const merged = readLocalDismissals();
+  if (shouldSkipDismissalsBackendFetch()) {
+    return merged;
+  }
+
+  try {
+    const rows = await database.select<{ notification_key: string }>(
+      'notification_dismissals',
+      'select=notification_key',
+    );
+    markDismissalsBackendReady();
+    rows.forEach((row) => merged.add(row.notification_key));
+    return merged;
+  } catch (error) {
+    if (isSupabaseMissingResource(error)) {
+      markDismissalsBackendUnavailable();
+    }
+    return merged;
+  }
+}
+
+export function resetDismissalsBackendProbe() {
+  window.sessionStorage.removeItem(DISMISSALS_BACKEND_PROBE_KEY);
+}
+
+export function notifyNotificationsUpdated() {
+  window.dispatchEvent(new Event(NOTIFICATIONS_UPDATED_EVENT));
+}
+
+export async function fetchNotificationsData(): Promise<BackendNotification[]> {
+  if (!hasActiveSupabaseSession()) return [];
+
+  const [centerResult, dismissed] = await Promise.all([
+    database.select<BackendNotification>('notifications_center', 'select=*'),
+    fetchDismissedNotificationKeys(),
+  ]);
+
+  return centerResult
+    .filter((row) => !isHiddenNotification(row))
+    .map((row) => ({
+      ...row,
+      status: row.status === 'Read' || dismissed.has(row.id) ? 'Read' : 'Unread',
+    }));
+}
+
 export async function fetchNotifications() {
-  return database.select<BackendNotification>('notifications_center', 'select=*');
+  return fetchNotificationsData();
+}
+
+export async function fetchUnreadNotificationCount() {
+  try {
+    const rows = await fetchNotificationsData();
+    return rows.filter((row) => row.status === 'Unread').length;
+  } catch {
+    return 0;
+  }
 }
 
 export async function markBackendNotificationRead(id: string) {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const [savedNotification] = await database.update<BackendNotification>(
-    'notifications',
-    `id=eq.${id}`,
-    { status: 'Read' },
-  );
-  return savedNotification;
+  if (/^[0-9a-f-]{36}$/i.test(id)) {
+    const [savedNotification] = await database.update<BackendNotification>(
+      'notifications',
+      `id=eq.${id}`,
+      { status: 'Read' },
+    );
+    notifyNotificationsUpdated();
+    return savedNotification;
+  }
+
+  const probe = window.sessionStorage.getItem(DISMISSALS_BACKEND_PROBE_KEY);
+  if (probe !== 'unavailable') {
+    try {
+      await database.rpcValue<void>('dismiss_notification', { notification_key: id });
+      markDismissalsBackendReady();
+      notifyNotificationsUpdated();
+      return null;
+    } catch (error) {
+      if (isSupabaseMissingResource(error)) {
+        markDismissalsBackendUnavailable();
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  addLocalDismissal(id);
+  notifyNotificationsUpdated();
+  return null;
 }
 
 export async function saveInvoiceToBackend(invoice: Invoice) {

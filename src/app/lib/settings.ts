@@ -39,7 +39,6 @@ export type UserAccount = {
 };
 
 export type SecuritySettings = {
-  timeout: string;
   forceChange: boolean;
 };
 
@@ -103,7 +102,6 @@ export const defaultSettings: AppSettings = {
     { id: 3, name: 'Manager', password: 'bill1234', status: 'Active' },
   ],
   security: {
-    timeout: '30',
     forceChange: true,
   },
 };
@@ -115,16 +113,56 @@ function notifySettingsUpdated() {
 function normalizeUsers(users: Partial<UserAccount>[]): UserAccount[] {
   return users.map((user, index) => {
     const fallback = defaultSettings.users.find((d) => d.email.toLowerCase() === (user.email || '').toLowerCase());
+    const storedPassword = typeof user.password === 'string' ? user.password : undefined;
     return {
       id: user.id ?? index + 1,
       name: user.name || fallback?.name || 'Staff Member',
       email: user.email || fallback?.email || `staff${index + 1}@skinspectrum.com`,
-      password: user.password || fallback?.password || 'skinspectrum123',
+      password: storedPassword && storedPassword.length > 0 ? storedPassword : (fallback?.password || ''),
       passwordChangedAt: user.passwordChangedAt || fallback?.passwordChangedAt,
       role: user.role || fallback?.role || 'Staff',
       status: user.status || fallback?.status || 'Active',
     };
   });
+}
+
+export function mergeStaffUsersFromBackend(
+  staffProfiles: Array<{
+    id: string | number;
+    name: string;
+    email: string;
+    role: UserAccount['role'];
+    status: UserAccount['status'];
+    password_changed_at?: string | null;
+  }>,
+  existingUsers: UserAccount[] = loadSettings().users,
+): UserAccount[] {
+  const merged = staffProfiles.map((profile) => {
+    const existing = existingUsers.find((user) => user.email.toLowerCase() === profile.email.toLowerCase());
+    const defaultAccount = defaultSettings.users.find(
+      (user) => user.email.toLowerCase() === profile.email.toLowerCase(),
+    );
+    const password =
+      existing?.password && existing.password.length > 0
+        ? existing.password
+        : (defaultAccount?.password || '');
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email.toLowerCase(),
+      password,
+      passwordChangedAt: profile.password_changed_at ?? existing?.passwordChangedAt,
+      role: profile.role,
+      status: profile.status,
+    };
+  });
+
+  const backendEmails = new Set(staffProfiles.map((profile) => profile.email.toLowerCase()));
+  const localOnlyUsers = existingUsers
+    .filter((user) => !backendEmails.has(user.email.toLowerCase()))
+    .map((user) => ({ ...user, email: user.email.toLowerCase() }));
+
+  return [...merged, ...localOnlyUsers];
 }
 
 function normalizeBillPersons(persons: Partial<BillPerson>[]): BillPerson[] {
@@ -159,7 +197,9 @@ export function loadSettings(): AppSettings {
       },
       users: normalizeUsers(parsed.users?.length ? parsed.users : defaultSettings.users),
       billPersons: normalizeBillPersons(parsed.billPersons?.length ? parsed.billPersons : defaultSettings.billPersons),
-      security: { ...defaultSettings.security, ...parsed.security },
+      security: {
+        forceChange: parsed.security?.forceChange ?? defaultSettings.security.forceChange,
+      },
     };
   } catch {
     return defaultSettings;
@@ -210,9 +250,19 @@ export function getEnabledPaymentMethods(billing: BillingSettings = loadSettings
 
 export function authenticateUser(email: string, password: string): UserAccount | null {
   const normalizedEmail = email.trim().toLowerCase();
-  const account = loadSettings().users.find((user) => user.email.toLowerCase() === normalizedEmail);
-  if (!account || account.status !== 'Active' || account.password !== password) return null;
-  return account;
+  const settings = loadSettings();
+  const savedAccount = settings.users.find((user) => user.email.toLowerCase() === normalizedEmail);
+  const defaultAccount = defaultSettings.users.find((user) => user.email.toLowerCase() === normalizedEmail);
+  const account = savedAccount ?? defaultAccount;
+  if (!account || account.status !== 'Active') return null;
+
+  const effectivePassword =
+    savedAccount?.password && savedAccount.password.length > 0
+      ? savedAccount.password
+      : (defaultAccount?.password ?? '');
+
+  if (!effectivePassword || effectivePassword !== password) return null;
+  return { ...account, email: normalizedEmail, password: effectivePassword };
 }
 
 export function isPasswordChangeRequired(email: string): boolean {
@@ -251,11 +301,6 @@ export function updateUserPassword(
   };
   patchSettings({ users: updatedUsers });
   return { success: true };
-}
-
-export function getSessionTimeoutMinutes(security: SecuritySettings = loadSettings().security): number {
-  const minutes = parseInt(security.timeout, 10);
-  return Number.isFinite(minutes) && minutes >= 5 ? minutes : 30;
 }
 
 export type BillPersonPublic = Pick<BillPerson, 'id' | 'name' | 'status'>;

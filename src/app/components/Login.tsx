@@ -32,11 +32,11 @@ export default function Login() {
 
     await new Promise((r) => setTimeout(r, 400));
 
-    const success = await login(email, password);
+    const result = await login(email, password);
     setIsSubmitting(false);
 
-    if (!success) {
-      setError('Invalid email or password, or this staff profile is not active.');
+    if (!result.success) {
+      setError(result.error || 'Invalid email or password, or this staff profile is not active.');
     }
   };
 

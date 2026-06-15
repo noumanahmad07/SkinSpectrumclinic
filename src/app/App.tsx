@@ -13,13 +13,11 @@ import Settings from './components/Settings';
 import Notifications from './components/Notifications';
 import {
   authenticateUser,
-  getSessionTimeoutMinutes,
   isPasswordChangeRequired,
   loadSettings,
   patchSettings,
-  SETTINGS_UPDATED_EVENT,
 } from './lib/settings';
-import { canUseBackend, fetchSettingsData, mapBackendSettings, signInStaff } from './lib/backend';
+import { canUseBackend, fetchSettingsData, mapBackendSettings, mapStaffProfileToUser, parseSupabaseError, signInStaff } from './lib/backend';
 import { signOutSupabase } from './lib/supabase';
 
 export interface AuthUser {
@@ -31,7 +29,7 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   clearPasswordReminder: () => void;
 }
@@ -45,33 +43,6 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
-
-function useSessionTimeout(isLoggedIn: boolean, logout: () => void) {
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    const resetTimer = () => {
-      clearTimeout(timeoutId);
-      const minutes = getSessionTimeoutMinutes(loadSettings().security);
-      timeoutId = setTimeout(() => {
-        logout();
-      }, minutes * 60 * 1000);
-    };
-
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const;
-    events.forEach((event) => window.addEventListener(event, resetTimer, { passive: true }));
-    window.addEventListener(SETTINGS_UPDATED_EVENT, resetTimer);
-    resetTimer();
-
-    return () => {
-      clearTimeout(timeoutId);
-      events.forEach((event) => window.removeEventListener(event, resetTimer));
-      window.removeEventListener(SETTINGS_UPDATED_EVENT, resetTimer);
-    };
-  }, [isLoggedIn, logout]);
-}
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -92,8 +63,6 @@ export default function App() {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
   }, []);
 
-  useSessionTimeout(Boolean(user), logout);
-
   useEffect(() => {
     if (!user || !canUseBackend()) return;
     fetchSettingsData()
@@ -105,19 +74,11 @@ export default function App() {
           billing: mapped.billing,
           notifications: mapped.notifications,
           security: mapped.security,
-          users: staffProfiles.map((profile) => ({
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            password: '',
-            passwordChangedAt: profile.password_changed_at ?? undefined,
-            role: profile.role,
-            status: profile.status,
-          })),
+          users: staffProfiles.map(mapStaffProfileToUser),
           billPersons: billPersons.map((person) => ({
             id: person.id,
             name: person.name,
-            password: '',
+            password: loadSettings().billPersons.find((entry) => String(entry.id) === String(person.id))?.password || '',
             status: person.status,
           })),
         });
@@ -126,10 +87,17 @@ export default function App() {
   }, [user]);
 
   const login = async (email: string, password: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (canUseBackend()) {
       try {
-        const result = await signInStaff(email, password);
-        if (!result) return false;
+        const result = await signInStaff(normalizedEmail, password);
+        if (!result) {
+          return {
+            success: false,
+            error: 'Invalid email or password, or this staff profile is not active in Supabase.',
+          };
+        }
 
         const authenticatedUser: AuthUser = {
           name: result.profile.name,
@@ -140,14 +108,22 @@ export default function App() {
 
         setUser(authenticatedUser);
         window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authenticatedUser));
-        return true;
-      } catch {
-        return false;
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: parseSupabaseError(error),
+        };
       }
     }
 
-    const account = authenticateUser(email, password);
-    if (!account) return false;
+    const account = authenticateUser(normalizedEmail, password);
+    if (!account) {
+      return {
+        success: false,
+        error: 'Invalid email or password, or this staff profile is not active.',
+      };
+    }
 
     const authenticatedUser: AuthUser = {
       name: account.name,
@@ -158,7 +134,7 @@ export default function App() {
 
     setUser(authenticatedUser);
     window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authenticatedUser));
-    return true;
+    return { success: true };
   };
 
   const clearPasswordReminder = () => {

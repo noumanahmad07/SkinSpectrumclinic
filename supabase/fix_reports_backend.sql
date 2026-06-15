@@ -1,14 +1,6 @@
--- Reports page backend setup for Skin Spectrum
--- Run this AFTER:
--- 1) supabase/migrations/202606130001_initial_schema.sql
--- 2) supabase/seed.sql
--- 3) supabase/login_backend_setup.sql
--- 4) supabase/clients_backend_setup.sql
--- 5) supabase/pos_backend_setup.sql
--- 6) supabase/billing_backend_setup.sql
--- 7) supabase/inventory_backend_setup.sql
---
--- Reports views use security_invoker = false so staff can read aggregates without RLS recursion issues.
+-- Fix Reports page load errors
+-- Run this FULL file in Supabase Dashboard -> SQL Editor
+-- (Same as reports_backend_setup.sql with security_invoker = false + grants)
 
 alter table public.invoice_items
   add column if not exists product_id uuid references public.products(id) on delete set null;

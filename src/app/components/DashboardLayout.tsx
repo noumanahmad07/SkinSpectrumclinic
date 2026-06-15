@@ -1,5 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router';
+import {
+  canUseBackend,
+  fetchUnreadNotificationCount,
+  NOTIFICATIONS_UPDATED_EVENT,
+} from '../lib/backend';
+import { hasActiveSupabaseSession } from '../lib/supabase';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -11,7 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
-  Search,
   LogOut,
   Menu,
   X,
@@ -41,6 +46,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+  const backendSyncEnabled = canUseBackend() && hasActiveSupabaseSession();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnreadCount = useCallback(async () => {
+    if (!backendSyncEnabled) {
+      setUnreadCount(0);
+      return;
+    }
+    const count = await fetchUnreadNotificationCount();
+    setUnreadCount(count);
+  }, [backendSyncEnabled]);
+
+  useEffect(() => {
+    refreshUnreadCount();
+  }, [refreshUnreadCount, location.pathname]);
+
+  useEffect(() => {
+    const handleNotificationsUpdated = () => {
+      refreshUnreadCount();
+    };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
+    return () => window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
+  }, [refreshUnreadCount]);
 
   const groupedNav = navigation.reduce((acc, item) => {
     if (!acc[item.section]) acc[item.section] = [];
@@ -203,15 +231,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} strokeWidth={1.75} />
-                <input
-                  type="text"
-                  placeholder="Search clients, invoices, products…"
-                  className="h-9 w-64 rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 transition-colors focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 lg:w-80"
-                />
-              </div>
-
               <Link
                 to="/notifications"
                 title="Notifications"
@@ -219,7 +238,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   location.pathname === '/notifications' ? 'bg-secondary text-primary' : 'hover:bg-muted'
                 }`}>
                 <Bell size={18} strokeWidth={1.75} className="text-muted-foreground" />
-                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-card" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-card">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </Link>
 
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
