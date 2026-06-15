@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Search, Plus, X, Phone, Mail, Calendar, Edit, CalendarClock, Eye, Users, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  canUseBackend,
+  createBackendClient,
+  fetchClientPageClients,
+  updateBackendClient,
+  type BackendClient,
+  type BackendClientInput,
+} from '../lib/backend';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
 const skinTypeStyles: Record<string, string> = {
@@ -20,7 +28,7 @@ const skinTypeAccent: Record<string, string> = {
 };
 
 interface Client {
-  id: number;
+  id: number | string;
   name: string;
   phone: string;
   email: string;
@@ -115,6 +123,41 @@ const CLIENTS_STORAGE_KEY = 'skinspectrum_clients';
 
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
+const todayDate = () => new Date().toISOString().split('T')[0];
+
+const mapBackendClient = (client: BackendClient): Client => ({
+  id: client.id,
+  name: client.name,
+  phone: client.phone,
+  email: client.email || '',
+  skinType: client.skin_type,
+  lastVisit: client.last_visit,
+  totalSpent: Number(client.total_spent || 0),
+  concerns: client.concerns || [],
+  allergies: client.allergies || 'None',
+  notes: client.notes || '',
+  followUpDays: client.follow_up_days ?? undefined,
+  followUpDate: client.follow_up_date ?? undefined,
+  appointmentDate: client.appointment_date ?? undefined,
+  appointmentTime: client.appointment_time ? client.appointment_time.slice(0, 5) : undefined,
+});
+
+const toBackendClientInput = (client: Omit<Client, 'id'>): BackendClientInput => ({
+  name: client.name,
+  phone: client.phone,
+  email: client.email || null,
+  skin_type: client.skinType,
+  last_visit: client.lastVisit,
+  total_spent: client.totalSpent,
+  concerns: client.concerns,
+  allergies: client.allergies || 'None',
+  notes: client.notes || '',
+  follow_up_days: client.followUpDays ?? null,
+  follow_up_date: client.followUpDate ?? null,
+  appointment_date: client.appointmentDate ?? null,
+  appointment_time: client.appointmentTime ?? null,
+});
+
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-xl border border-border bg-card shadow-sm ${className}`}>
@@ -149,7 +192,9 @@ const addDays = (date: Date, days: number) => {
 };
 
 export default function Clients() {
+  const backendEnabled = canUseBackend();
   const [clients, setClients] = useState<Client[]>(() => {
+    if (canUseBackend()) return [];
     const savedClients = window.localStorage.getItem(CLIENTS_STORAGE_KEY);
     return savedClients ? JSON.parse(savedClients) : initialClients;
   });
@@ -159,10 +204,34 @@ export default function Clients() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [backendError, setBackendError] = useState('');
 
   useEffect(() => {
+    if (backendEnabled) return;
     window.localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(clients));
-  }, [clients]);
+  }, [backendEnabled, clients]);
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+
+    let ignore = false;
+    fetchClientPageClients()
+      .then((rows) => {
+        if (!ignore) {
+          setClients(rows.map(mapBackendClient));
+          setBackendError('');
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setBackendError('Could not load clients from Supabase. Please run clients_backend_setup.sql and check RLS/login.');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled]);
 
   const filteredClients = clients.filter(
     (client) =>
@@ -172,22 +241,48 @@ export default function Clients() {
       (!filterSkinType || client.skinType === filterSkinType)
   );
 
-  const addClient = (newClient: Omit<Client, 'id' | 'lastVisit'>) => {
+  const addClient = async (newClient: Omit<Client, 'id' | 'lastVisit'>) => {
     const client: Client = {
       ...newClient,
       id: Date.now(),
-      lastVisit: new Date().toISOString().split('T')[0],
+      lastVisit: todayDate(),
     };
-    setClients((prev) => [client, ...prev]);
+
+    if (backendEnabled) {
+      try {
+        const savedClient = await createBackendClient(toBackendClientInput(client));
+        setClients((prev) => [mapBackendClient(savedClient), ...prev]);
+        setBackendError('');
+      } catch {
+        setBackendError('Client was not saved to Supabase. Please check your backend setup.');
+        return;
+      }
+    } else {
+      setClients((prev) => [client, ...prev]);
+    }
+
     setShowAddClient(false);
     setSuccessMessage(`${client.name} has been added successfully!`);
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
-  const updateClient = (updated: Client) => {
-    setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+  const updateClient = async (updated: Client) => {
+    let savedClient = updated;
+
+    if (backendEnabled && typeof updated.id === 'string') {
+      try {
+        const backendClient = await updateBackendClient(updated.id, toBackendClientInput(updated));
+        savedClient = mapBackendClient(backendClient);
+        setBackendError('');
+      } catch {
+        setBackendError('Client changes were not saved to Supabase. Please check your backend setup.');
+        return;
+      }
+    }
+
+    setClients((prev) => prev.map((c) => (c.id === savedClient.id ? savedClient : c)));
     setEditClient(null);
-    setSelectedClient(updated);
+    setSelectedClient(savedClient);
     setSuccessMessage('Client updated successfully!');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -206,6 +301,12 @@ export default function Clients() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendError && (
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
+          {backendError}
+        </div>
+      )}
 
       <Panel className="mb-4 shrink-0 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

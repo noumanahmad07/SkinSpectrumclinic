@@ -29,7 +29,7 @@ export type NotificationSettings = {
 };
 
 export type UserAccount = {
-  id: number;
+  id: number | string;
   name: string;
   email: string;
   password: string;
@@ -44,7 +44,7 @@ export type SecuritySettings = {
 };
 
 export type BillPerson = {
-  id: number;
+  id: number | string;
   name: string;
   password: string;
   status: 'Active' | 'Inactive';
@@ -266,8 +266,8 @@ export function getActiveBillPersons(): BillPersonPublic[] {
     .map(({ id, name, status }) => ({ id, name, status }));
 }
 
-export function authenticateBillPerson(personId: number, password: string): BillPerson | null {
-  const person = loadSettings().billPersons.find((entry) => entry.id === personId);
+export function authenticateBillPerson(personId: number | string, password: string): BillPerson | null {
+  const person = loadSettings().billPersons.find((entry) => String(entry.id) === String(personId));
   if (!person || person.status !== 'Active' || person.password !== password) return null;
   return person;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -10,9 +10,62 @@ import {
   Package,
   Search,
   ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
+import { canUseBackend, fetchNotifications, markBackendNotificationRead, type BackendNotification } from '../lib/backend';
 
-const notifications = [
+type NotificationItem = {
+  id: string | number;
+  title: string;
+  message: string;
+  time: string;
+  category: string;
+  status: string;
+  priority: string;
+  icon: LucideIcon;
+  color: string;
+};
+
+const iconByCategory: Record<string, LucideIcon> = {
+  Appointments: CalendarClock,
+  Inventory: Package,
+  Billing: CreditCard,
+  Reports: ClipboardList,
+  System: ShieldCheck,
+};
+
+const colorByCategory: Record<string, string> = {
+  Appointments: '#8F609A',
+  Inventory: '#F0A500',
+  Billing: '#C9A96E',
+  Reports: '#2ECC8A',
+  System: '#1A1025',
+};
+
+const formatRelativeTime = (date: string) => {
+  const diffMs = Date.now() - new Date(date).getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+const mapBackendNotification = (notification: BackendNotification): NotificationItem => ({
+  id: notification.id,
+  title: notification.title,
+  message: notification.message,
+  time: formatRelativeTime(notification.created_at),
+  category: notification.category,
+  status: notification.status,
+  priority: notification.priority,
+  icon: iconByCategory[notification.category] || Bell,
+  color: colorByCategory[notification.category] || '#1A1025',
+});
+
+const initialNotifications: NotificationItem[] = [
   {
     id: 1,
     title: 'Emma Wilson appointment starts in 20 minutes',
@@ -73,9 +126,37 @@ const notifications = [
 const filters = ['All', 'Unread', 'Appointments', 'Billing', 'Inventory', 'System'];
 
 export default function Notifications() {
+  const backendEnabled = canUseBackend();
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => (canUseBackend() ? [] : initialNotifications));
   const [activeFilter, setActiveFilter] = useState('All');
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [backendError, setBackendError] = useState('');
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+    let ignore = false;
+    fetchNotifications()
+      .then((rows) => {
+        if (!ignore) {
+          setNotifications(rows.map(mapBackendNotification));
+          setBackendError('');
+        }
+      })
+      .catch(() => {
+        if (!ignore) setBackendError('Could not load notifications from Supabase. Please run notifications_backend_setup.sql.');
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled]);
+
+  const markRead = async (id: string | number) => {
+    if (backendEnabled && typeof id === 'string') {
+      await markBackendNotificationRead(id);
+    }
+    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, status: 'Read' } : item)));
+  };
 
   const filteredNotifications = notifications.filter((notification) => {
     const matchesFilter =
@@ -94,6 +175,12 @@ export default function Notifications() {
 
   return (
     <div className="space-y-5 md:space-y-7">
+      {backendError && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
+          {backendError}
+        </div>
+      )}
+
       <section
         className="relative overflow-hidden rounded-lg border border-white/80 p-5 text-[#FFF7E8] shadow-[0_24px_70px_rgba(26,16,37,0.14)] md:p-7"
         style={{
@@ -205,7 +292,9 @@ export default function Notifications() {
                   </div>
                 </div>
 
-                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#E8DFD4] bg-white px-4 text-sm font-semibold text-[#6B6570] transition-colors hover:border-[#D1AD69] hover:text-[#1A1025]">
+                <button
+                  onClick={() => markRead(notification.id)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#E8DFD4] bg-white px-4 text-sm font-semibold text-[#6B6570] transition-colors hover:border-[#D1AD69] hover:text-[#1A1025]">
                   <CheckCircle2 size={16} />
                   Mark read
                 </button>

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "supabase:push": "supabase db push",
+    "supabase:seed": "supabase db seed"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

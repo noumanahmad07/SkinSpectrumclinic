@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import {
   ArrowRight,
@@ -31,11 +32,11 @@ export default function Login() {
 
     await new Promise((r) => setTimeout(r, 400));
 
-    const success = login(email, password);
+    const success = await login(email, password);
     setIsSubmitting(false);
 
     if (!success) {
-      setError('Invalid email or password. Only active staff accounts can sign in.');
+      setError('Invalid email or password, or this staff profile is not active.');
     }
   };
 
@@ -293,7 +294,9 @@ export default function Login() {
                     />
                     <span className="text-[12px] text-muted-foreground">Remember me for 30 days</span>
                   </label>
-                  <span className="hidden text-[11px] font-medium text-[#A07840] sm:block">Authorized staff only</span>
+                  <Link to="/reset-password" className="text-[11px] font-medium text-[#A07840] transition-colors hover:text-[#1A1025]">
+                    Forgot password?
+                  </Link>
                 </div>
 
                 {/* Submit */}

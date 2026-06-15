@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
-import { Building2, Receipt, Bell, Users, Lock, Save, Upload, Check, Plus, X, UserCheck } from 'lucide-react';
+import { AlertTriangle, Building2, Receipt, Bell, Users, Lock, Save, Upload, Check, Plus, X, UserCheck, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ssaLogo from '../../assets/ssa-logo.png';
@@ -17,6 +17,19 @@ import {
   type UserAccount,
   type BillPerson,
 } from '../lib/settings';
+import {
+  canUseBackend,
+  deleteBackendBillPerson,
+  deleteBackendStaffProfile,
+  fetchSettingsData,
+  mapBackendSettings,
+  saveBackendBillingSettings,
+  saveBackendClinicSettings,
+  saveBackendNotificationSettings,
+  saveBackendSecuritySettings,
+  updateBackendStaffProfile,
+  upsertBackendBillPerson,
+} from '../lib/backend';
 
 const fieldClass =
   'h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15';
@@ -119,15 +132,16 @@ export default function Settings() {
   );
 }
 
-function SaveButton({ onClick, label = 'Save Changes' }: { onClick: () => void; label?: string }) {
+function SaveButton({ onClick, label = 'Save Changes' }: { onClick: () => void | Promise<void>; label?: string }) {
   const [saving, setSaving] = useState(false);
 
-  const handleClick = () => {
+  const handleClick = async () => {
     setSaving(true);
-    setTimeout(() => {
+    try {
+      await onClick();
+    } finally {
       setSaving(false);
-      onClick();
-    }, 600);
+    }
   };
 
   return (
@@ -151,11 +165,110 @@ function SaveButton({ onClick, label = 'Save Changes' }: { onClick: () => void; 
   );
 }
 
+function DeleteConfirmModal({
+  title,
+  message,
+  confirmLabel,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm"
+      onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.96 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertTriangle size={21} strokeWidth={1.9} />
+          </div>
+          <div className="min-w-0">
+            <h2 style={{ fontFamily: 'var(--font-heading)' }} className="text-[18px] font-semibold text-foreground">
+              {title}
+            </h2>
+            <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{message}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={deleting}
+            className="h-10 rounded-lg border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={deleting}
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-destructive px-4 text-[13px] font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-70">
+            {deleting ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 size={15} strokeWidth={1.9} />
+                {confirmLabel}
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function ClinicInfoTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const [form, setForm] = useState<ClinicSettings>(() => loadSettings().clinic);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ clinicSettings }) => {
+        if (clinicSettings) {
+          const mapped = mapBackendSettings(clinicSettings);
+          setForm(mapped.clinic);
+          patchSettings({ clinic: mapped.clinic });
+        }
+      })
+      .catch(() => onSave('Could not load clinic settings from Supabase'));
+  }, [backendEnabled]);
+
+  const handleSave = async () => {
+    if (backendEnabled) {
+      await saveBackendClinicSettings(form);
+    }
     patchSettings({ clinic: form });
     onSave('Clinic information saved!');
   };
@@ -241,9 +354,26 @@ function ClinicInfoTab({ onSave }: { onSave: (msg: string) => void }) {
 }
 
 function BillingTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const [form, setForm] = useState<BillingSettings>(() => loadSettings().billing);
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ clinicSettings }) => {
+        if (clinicSettings) {
+          const mapped = mapBackendSettings(clinicSettings);
+          setForm(mapped.billing);
+          patchSettings({ billing: mapped.billing });
+        }
+      })
+      .catch(() => onSave('Could not load billing settings from Supabase'));
+  }, [backendEnabled]);
+
+  const handleSave = async () => {
+    if (backendEnabled) {
+      await saveBackendBillingSettings(form);
+    }
     patchSettings({ billing: form });
     onSave('Tax & billing settings saved!');
   };
@@ -302,15 +432,36 @@ function BillingTab({ onSave }: { onSave: (msg: string) => void }) {
 }
 
 function NotificationsTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const saved = loadSettings().notifications;
   const [whatsappEnabled, setWhatsappEnabled] = useState(saved.whatsappEnabled);
   const [emailEnabled, setEmailEnabled] = useState(saved.emailEnabled);
   const [whatsappItems, setWhatsappItems] = useState(saved.whatsappItems);
   const [emailItems, setEmailItems] = useState(saved.emailItems);
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ clinicSettings }) => {
+        if (clinicSettings) {
+          const mapped = mapBackendSettings(clinicSettings);
+          setWhatsappEnabled(mapped.notifications.whatsappEnabled);
+          setEmailEnabled(mapped.notifications.emailEnabled);
+          setWhatsappItems(mapped.notifications.whatsappItems);
+          setEmailItems(mapped.notifications.emailItems);
+          patchSettings({ notifications: mapped.notifications });
+        }
+      })
+      .catch(() => onSave('Could not load notification settings from Supabase'));
+  }, [backendEnabled]);
+
+  const handleSave = async () => {
+    const notifications = { whatsappEnabled, emailEnabled, whatsappItems, emailItems };
+    if (backendEnabled) {
+      await saveBackendNotificationSettings(notifications);
+    }
     patchSettings({
-      notifications: { whatsappEnabled, emailEnabled, whatsappItems, emailItems },
+      notifications,
     });
     onSave('Notification preferences saved!');
   };
@@ -401,7 +552,7 @@ function UserFormModal({
 }: {
   user: UserAccount | null;
   onClose: () => void;
-  onSubmit: (data: Omit<UserAccount, 'id'> & { id?: number }) => void;
+  onSubmit: (data: Omit<UserAccount, 'id'> & { id?: number | string }) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -540,9 +691,30 @@ function UserFormModal({
 }
 
 function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const [users, setUsers] = useState<UserAccount[]>(() => loadSettings().users);
   const [showAddUser, setShowAddUser] = useState(false);
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
+  const [deleteUser, setDeleteUser] = useState<UserAccount | null>(null);
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ staffProfiles }) => {
+        const backendUsers: UserAccount[] = staffProfiles.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          password: '',
+          passwordChangedAt: profile.password_changed_at ?? undefined,
+          role: profile.role,
+          status: profile.status,
+        }));
+        setUsers(backendUsers);
+        patchSettings({ users: backendUsers });
+      })
+      .catch(() => onSave('Could not load users from Supabase'));
+  }, [backendEnabled]);
 
   const persistUsers = (nextUsers: UserAccount[]) => {
     setUsers(nextUsers);
@@ -550,17 +722,31 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
   };
 
   const handleAddUser = (data: Omit<UserAccount, 'id'>) => {
-    const nextId = users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1;
+    const numericIds = users.map((u) => (typeof u.id === 'number' ? u.id : 0));
+    const nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
     persistUsers([...users, { ...data, id: nextId }]);
     setShowAddUser(false);
-    onSave('User added successfully!');
+    onSave(backendEnabled ? 'User saved locally. Create their Supabase Auth account to enable login.' : 'User added successfully!');
   };
 
-  const handleUpdateUser = (data: Omit<UserAccount, 'id'> & { id?: number }) => {
+  const handleUpdateUser = async (data: Omit<UserAccount, 'id'> & { id?: number | string }) => {
     if (data.id == null) return;
+    if (backendEnabled && typeof data.id === 'string') {
+      await updateBackendStaffProfile({ ...data, id: data.id });
+    }
     persistUsers(users.map((u) => (u.id === data.id ? { ...data, id: data.id } : u)));
     setEditUser(null);
     onSave('User updated successfully!');
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return;
+    if (backendEnabled && typeof deleteUser.id === 'string') {
+      await deleteBackendStaffProfile(deleteUser.id);
+    }
+    persistUsers(users.filter((user) => user.id !== deleteUser.id));
+    setDeleteUser(null);
+    onSave('User deleted successfully!');
   };
 
   return (
@@ -617,12 +803,21 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditUser(user)}
-                      className="text-[12px] font-medium text-primary transition-colors hover:text-primary/80">
-                      Edit
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditUser(user)}
+                        className="text-[12px] font-medium text-primary transition-colors hover:text-primary/80">
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteUser(user)}
+                        className="inline-flex items-center gap-1 text-[12px] font-medium text-destructive transition-colors hover:text-destructive/80">
+                        <Trash2 size={13} strokeWidth={1.9} />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -648,6 +843,16 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
         {editUser && (
           <UserFormModal key={`edit-user-${editUser.id}`} user={editUser} onClose={() => setEditUser(null)} onSubmit={handleUpdateUser} />
         )}
+        {deleteUser && (
+          <DeleteConfirmModal
+            key={`delete-user-${deleteUser.id}`}
+            title="Delete User Account?"
+            message={`Delete ${deleteUser.name} from user accounts? This removes their staff profile from the app.`}
+            confirmLabel="Delete User"
+            onClose={() => setDeleteUser(null)}
+            onConfirm={handleDeleteUser}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -660,7 +865,7 @@ function BillPersonFormModal({
 }: {
   person: BillPerson | null;
   onClose: () => void;
-  onSubmit: (data: Omit<BillPerson, 'id'> & { id?: number }) => void;
+  onSubmit: (data: Omit<BillPerson, 'id'> & { id?: number | string }) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     name: person?.name || '',
@@ -775,27 +980,76 @@ function BillPersonFormModal({
 }
 
 function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const [billPersons, setBillPersons] = useState<BillPerson[]>(() => loadSettings().billPersons);
   const [showAdd, setShowAdd] = useState(false);
   const [editPerson, setEditPerson] = useState<BillPerson | null>(null);
+  const [deletePerson, setDeletePerson] = useState<BillPerson | null>(null);
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ billPersons: backendPersons }) => {
+        const nextPersons: BillPerson[] = backendPersons.map((person) => ({
+          id: person.id,
+          name: person.name,
+          password: '',
+          status: person.status,
+        }));
+        setBillPersons(nextPersons);
+        patchSettings({ billPersons: nextPersons });
+      })
+      .catch(() => onSave('Could not load bill persons from Supabase'));
+  }, [backendEnabled]);
 
   const persist = (next: BillPerson[]) => {
     setBillPersons(next);
     patchSettings({ billPersons: next });
   };
 
-  const handleAdd = (data: Omit<BillPerson, 'id'>) => {
-    const nextId = billPersons.length ? Math.max(...billPersons.map((p) => p.id)) + 1 : 1;
-    persist([...billPersons, { ...data, id: nextId }]);
-    setShowAdd(false);
-    onSave('Bill person added successfully!');
+  const handleAdd = async (data: Omit<BillPerson, 'id'>) => {
+    try {
+      if (backendEnabled) {
+        const savedPerson = await upsertBackendBillPerson(data);
+        persist([...billPersons, { ...data, id: savedPerson.id }]);
+      } else {
+        const numericIds = billPersons.map((p) => (typeof p.id === 'number' ? p.id : 0));
+        const nextId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
+        persist([...billPersons, { ...data, id: nextId }]);
+      }
+      setShowAdd(false);
+      onSave('Bill person added successfully!');
+    } catch {
+      onSave('Bill person was not saved. Run settings_backend_setup.sql in Supabase SQL Editor.');
+    }
   };
 
-  const handleUpdate = (data: Omit<BillPerson, 'id'> & { id?: number }) => {
+  const handleUpdate = async (data: Omit<BillPerson, 'id'> & { id?: number | string }) => {
     if (data.id == null) return;
-    persist(billPersons.map((p) => (p.id === data.id ? { ...data, id: data.id } : p)));
-    setEditPerson(null);
-    onSave('Bill person updated successfully!');
+    try {
+      if (backendEnabled) {
+        await upsertBackendBillPerson(data);
+      }
+      persist(billPersons.map((p) => (p.id === data.id ? { ...data, id: data.id } : p)));
+      setEditPerson(null);
+      onSave('Bill person updated successfully!');
+    } catch {
+      onSave('Bill person was not updated. Run settings_backend_setup.sql in Supabase SQL Editor.');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletePerson) return;
+    try {
+      if (backendEnabled && typeof deletePerson.id === 'string') {
+        await deleteBackendBillPerson(deletePerson.id);
+      }
+      persist(billPersons.filter((entry) => entry.id !== deletePerson.id));
+      setDeletePerson(null);
+      onSave('Bill person deleted successfully!');
+    } catch {
+      onSave('Bill person was not deleted. Run settings_backend_setup.sql in Supabase SQL Editor.');
+    }
   };
 
   return (
@@ -844,12 +1098,21 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditPerson(person)}
-                      className="text-[12px] font-medium text-primary transition-colors hover:text-primary/80">
-                      Edit
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditPerson(person)}
+                        className="text-[12px] font-medium text-primary transition-colors hover:text-primary/80">
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeletePerson(person)}
+                        className="inline-flex items-center gap-1 text-[12px] font-medium text-destructive transition-colors hover:text-destructive/80">
+                        <Trash2 size={13} strokeWidth={1.9} />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -875,12 +1138,23 @@ function BillPersonsTab({ onSave }: { onSave: (msg: string) => void }) {
         {editPerson && (
           <BillPersonFormModal key={`edit-bill-person-${editPerson.id}`} person={editPerson} onClose={() => setEditPerson(null)} onSubmit={handleUpdate} />
         )}
+        {deletePerson && (
+          <DeleteConfirmModal
+            key={`delete-bill-person-${deletePerson.id}`}
+            title="Delete Bill Person?"
+            message={`Delete ${deletePerson.name} from bill persons? They will no longer be able to authorize POS bills.`}
+            confirmLabel="Delete Bill Person"
+            onClose={() => setDeletePerson(null)}
+            onConfirm={handleDelete}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
 }
 
 function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
+  const backendEnabled = canUseBackend();
   const { user, clearPasswordReminder } = useAuth();
   const saved = loadSettings().security;
   const [form, setForm] = useState({
@@ -892,14 +1166,35 @@ function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
   });
   const [error, setError] = useState('');
 
-  const handleSaveSecurity = () => {
+  useEffect(() => {
+    if (!backendEnabled) return;
+    fetchSettingsData()
+      .then(({ clinicSettings }) => {
+        if (clinicSettings) {
+          const mapped = mapBackendSettings(clinicSettings);
+          setForm((prev) => ({
+            ...prev,
+            timeout: mapped.security.timeout,
+            forceChange: mapped.security.forceChange,
+          }));
+          patchSettings({ security: mapped.security });
+        }
+      })
+      .catch(() => onSave('Could not load security settings from Supabase'));
+  }, [backendEnabled]);
+
+  const handleSaveSecurity = async () => {
     const minutes = parseInt(form.timeout, 10);
     if (!Number.isFinite(minutes) || minutes < 5) {
       setError('Session timeout must be at least 5 minutes');
       return;
     }
     setError('');
-    patchSettings({ security: { timeout: form.timeout, forceChange: form.forceChange } });
+    const security = { timeout: form.timeout, forceChange: form.forceChange };
+    if (backendEnabled) {
+      await saveBackendSecuritySettings(security);
+    }
+    patchSettings({ security });
     onSave('Security settings saved!');
   };
 
@@ -927,7 +1222,11 @@ function SecurityTab({ onSave }: { onSave: (msg: string) => void }) {
       return;
     }
 
-    patchSettings({ security: { timeout: form.timeout, forceChange: form.forceChange } });
+    const security = { timeout: form.timeout, forceChange: form.forceChange };
+    if (backendEnabled) {
+      saveBackendSecuritySettings(security).catch(() => undefined);
+    }
+    patchSettings({ security });
     clearPasswordReminder();
     setError('');
     setForm({ ...form, current: '', newPass: '', confirm: '' });

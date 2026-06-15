@@ -5,6 +5,7 @@ const INVOICE_ID_PREFIX = 'INV';
 const INVOICE_DUE_DAYS = 30;
 
 export interface InvoiceItem {
+  productId?: string;
   name: string;
   quantity: number;
   price: number;
@@ -15,6 +16,7 @@ export type InvoiceStatus = 'Paid' | 'Credit';
 export interface Invoice {
   id: string;
   client: string;
+  clientId?: string;
   date: string;
   dueDate: string;
   amount: number;
@@ -77,6 +79,7 @@ export function createNextInvoiceId(existing: Invoice[]): string {
 
 export function buildPosInvoice(params: {
   client: string;
+  clientId?: string;
   paymentMethod: string | null;
   creditAmount: number;
   items: InvoiceItem[];
@@ -98,6 +101,7 @@ export function buildPosInvoice(params: {
   return {
     id,
     client: params.client,
+    clientId: params.clientId,
     date: today.toISOString().slice(0, 10),
     dueDate: due.toISOString().slice(0, 10),
     amount: params.total,

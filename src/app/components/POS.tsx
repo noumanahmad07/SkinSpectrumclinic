@@ -38,14 +38,39 @@ import {
   getActiveBillPersons,
   authenticateBillPerson,
   loadSettings,
+  patchSettings,
   isCreditEnabled,
   SETTINGS_UPDATED_EVENT,
   type PosPaymentMethod,
   type BillPersonPublic,
 } from '../lib/settings';
 import { appendInvoice, buildPosInvoice } from '../lib/invoices';
+import {
+  canUseBackend,
+  decreaseBackendProductStock,
+  fetchSettingsData,
+  fetchPosClients,
+  fetchPosProducts,
+  mapBackendSettings,
+  saveInvoiceToBackend,
+  updateBackendClientAfterSale,
+  verifyBackendBillPerson,
+  type BackendPosClient,
+  type BackendPosProduct,
+} from '../lib/backend';
 
-const mockProducts = [
+type PosProduct = {
+  id: number | string;
+  code?: string;
+  productId?: string;
+  name: string;
+  category: string;
+  price: number;
+  stock: number;
+  unit?: string;
+};
+
+const mockProducts: PosProduct[] = [
   { id: 1, name: 'Hydrating Serum', category: 'Serums', price: 89, stock: 45 },
   { id: 2, name: 'Anti-Aging Cream', category: 'Creams', price: 125, stock: 32 },
   { id: 3, name: 'Vitamin C Serum', category: 'Serums', price: 95, stock: 28 },
@@ -61,6 +86,18 @@ const mockProducts = [
 ];
 
 const categories = ['All', 'Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs', 'Masks', 'Protection'];
+const fallbackClients = ['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'];
+
+const mapBackendPosProduct = (product: BackendPosProduct): PosProduct => ({
+  id: product.id,
+  productId: product.id,
+  code: product.code,
+  name: product.name,
+  category: product.category,
+  price: Number(product.price || 0),
+  stock: product.stock,
+  unit: product.unit,
+});
 
 const categoryIcons: Record<string, LucideIcon> = {
   Serums: Droplets,
@@ -84,11 +121,21 @@ const PAYMENT_ICONS: Record<PosPaymentMethod, LucideIcon> = {
 
 function useBillingSettings() {
   const location = useLocation();
-  const [billing, setBilling] = useState(() => loadSettings().billing);
+  const [billing, setBilling] = useState(() => (canUseBackend() ? { ...loadSettings().billing, methods: { ...loadSettings().billing.methods } } : loadSettings().billing));
 
   useEffect(() => {
     const refresh = () => setBilling(loadSettings().billing);
     refresh();
+    if (canUseBackend()) {
+      fetchSettingsData()
+        .then(({ clinicSettings }) => {
+          if (!clinicSettings) return;
+          const mapped = mapBackendSettings(clinicSettings);
+          patchSettings({ billing: mapped.billing });
+          setBilling(mapped.billing);
+        })
+        .catch(() => {});
+    }
     window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -101,7 +148,8 @@ function useBillingSettings() {
 }
 
 interface CartItem {
-  id: number;
+  id: number | string;
+  productId?: string;
   name: string;
   price: number;
   quantity: number;
@@ -154,7 +202,7 @@ function StaffAuthModal({
   onSuccess: (staffName: string) => void;
 }) {
   const [persons, setPersons] = useState<BillPersonPublic[]>(() => getActiveBillPersons());
-  const [personId, setPersonId] = useState<number>(() => getActiveBillPersons()[0]?.id ?? 0);
+  const [personId, setPersonId] = useState<number | string>(() => getActiveBillPersons()[0]?.id ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -162,25 +210,36 @@ function StaffAuthModal({
     const refresh = () => {
       const active = getActiveBillPersons();
       setPersons(active);
-      setPersonId((current) => (active.some((person) => person.id === current) ? current : active[0]?.id ?? 0));
+      setPersonId((current) => (active.some((person) => String(person.id) === String(current)) ? current : active[0]?.id ?? ''));
     };
     refresh();
     window.addEventListener(SETTINGS_UPDATED_EVENT, refresh);
     return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, refresh);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!personId) {
       setError('No bill person selected');
       return;
     }
-    const person = authenticateBillPerson(personId, password);
-    if (!person) {
+    const person = persons.find((entry) => String(entry.id) === String(personId));
+    if (canUseBackend() && typeof personId === 'string') {
+      const isValid = await verifyBackendBillPerson(personId, password);
+      if (!isValid || !person) {
+        setError('Invalid staff or password');
+        return;
+      }
+      onSuccess(person.name);
+      return;
+    }
+
+    const localPerson = authenticateBillPerson(personId, password);
+    if (!localPerson) {
       setError('Invalid staff or password');
       return;
     }
-    onSuccess(person.name);
+    onSuccess(localPerson.name);
   };
 
   return (
@@ -220,7 +279,7 @@ function StaffAuthModal({
             <label className="mb-1.5 block text-[12px] font-medium text-foreground">Staff member</label>
             <select
               value={personId || ''}
-              onChange={(e) => setPersonId(Number(e.target.value))}
+              onChange={(e) => setPersonId(e.target.value)}
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
               {persons.map((person) => (
                 <option key={person.id} value={person.id}>
@@ -256,6 +315,7 @@ function StaffAuthModal({
 
 export default function POS() {
   const location = useLocation();
+  const backendEnabled = canUseBackend();
   const billing = useBillingSettings();
   const enabledPaymentMethods = getEnabledPaymentMethods(billing);
   const creditEnabled = isCreditEnabled(billing);
@@ -276,6 +336,9 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedClient, setSelectedClient] = useState<string | null>(routedClient);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [products, setProducts] = useState<PosProduct[]>(() => (canUseBackend() ? [] : mockProducts));
+  const [posClients, setPosClients] = useState<BackendPosClient[]>([]);
   const [treatmentName, setTreatmentName] = useState('');
   const [treatmentPrice, setTreatmentPrice] = useState('');
   const [discount, setDiscount] = useState('');
@@ -312,12 +375,37 @@ export default function POS() {
     });
   }, [enabledPaymentMethods]);
 
-  const filteredProducts = mockProducts.filter(
+  useEffect(() => {
+    if (!backendEnabled) return;
+
+    let ignore = false;
+    Promise.all([fetchPosProducts(), fetchPosClients()])
+      .then(([productRows, clientRows]) => {
+        if (ignore) return;
+        setProducts(productRows.map(mapBackendPosProduct));
+        setPosClients(clientRows);
+        if (routedClient) {
+          const routed = clientRows.find((client) => client.name === routedClient);
+          setSelectedClientId(routed?.id ?? null);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setAlertMessage('Could not load POS data from Supabase. Please run pos_backend_setup.sql.');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled, routedClient]);
+
+  const filteredProducts = products.filter(
     (p) =>
       (selectedCategory === 'All' || p.category === selectedCategory) &&
       (p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        `SKU-${String(p.id).padStart(3, '0')}`.toLowerCase().includes(searchQuery.toLowerCase()))
+        (p.code || `SKU-${String(p.id).padStart(3, '0')}`).toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const openProductModal = useCallback(() => {
@@ -350,7 +438,7 @@ export default function POS() {
     active?.scrollIntoView({ block: 'nearest' });
   }, [selectedProductIndex, showProductModal, filteredProducts.length]);
 
-  const addToCart = (product: typeof mockProducts[0]) => {
+  const addToCart = (product: PosProduct) => {
     if (product.stock === 0) return;
     const existing = cart.find((item) => item.id === product.id);
     if (existing) {
@@ -360,11 +448,11 @@ export default function POS() {
           : item
       ));
     } else {
-      setCart([...cart, { id: product.id, name: product.name, price: product.price, quantity: 1 }]);
+      setCart([...cart, { id: product.id, productId: product.productId, name: product.name, price: product.price, quantity: 1 }]);
     }
   };
 
-  const addProductFromPicker = (product: (typeof mockProducts)[0]) => {
+  const addProductFromPicker = (product: PosProduct) => {
     if (product.stock === 0) return;
     addToCart(product);
   };
@@ -391,10 +479,10 @@ export default function POS() {
     }
   };
 
-  const updateQuantity = (id: number, delta: number) => {
+  const updateQuantity = (id: number | string, delta: number) => {
     setCart(cart.map((item) => {
       if (item.id === id) {
-        const product = mockProducts.find((p) => p.id === id);
+        const product = products.find((p) => p.id === id);
         const newQty = Math.max(1, Math.min(item.quantity + delta, product?.stock || 999));
         return { ...item, quantity: newQty };
       }
@@ -402,7 +490,7 @@ export default function POS() {
     }));
   };
 
-  const removeFromCart = (id: number) => {
+  const removeFromCart = (id: number | string) => {
     setCart(cart.filter((item) => item.id !== id));
   };
 
@@ -548,24 +636,47 @@ export default function POS() {
     return true;
   };
 
-  const executeBillAction = (action: 'save' | 'print', staffName: string) => {
+  const executeBillAction = async (action: 'save' | 'print', staffName: string) => {
     setBillStaffName(staffName);
-    appendInvoice(
-      buildPosInvoice({
-        client: clientName,
-        paymentMethod: paidAmount > 0 ? paymentMethod : null,
-        creditAmount: appliedCredit,
-        items: cart.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        subtotal,
-        discount: discountAmount,
-        tax: taxAmount,
-        total,
-      })
-    );
+    const invoice = buildPosInvoice({
+      client: clientName,
+      clientId: selectedClientId ?? undefined,
+      paymentMethod: paidAmount > 0 ? paymentMethod : null,
+      creditAmount: appliedCredit,
+      items: cart.map((item) => ({
+        productId: item.productId,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      subtotal,
+      discount: discountAmount,
+      tax: taxAmount,
+      total,
+    });
+
+    if (backendEnabled) {
+      try {
+        await saveInvoiceToBackend(invoice);
+        await Promise.all(cart.map((item) =>
+          item.productId ? decreaseBackendProductStock(item.productId, item.quantity) : Promise.resolve(null)
+        ));
+        if (selectedClientId) {
+          await updateBackendClientAfterSale(selectedClientId, total);
+        }
+        setProducts((current) => current.map((product) => {
+          const soldItem = cart.find((item) => item.productId && item.productId === product.productId);
+          if (!soldItem || product.unit === 'Service') return product;
+          return { ...product, stock: Math.max(0, product.stock - soldItem.quantity) };
+        }));
+      } catch {
+        setAlertMessage('Bill was not saved to Supabase. Please check POS backend setup.');
+        return;
+      }
+    } else {
+      appendInvoice(invoice);
+    }
+
     if (action === 'save') {
       setShowReceipt(true);
       return;
@@ -583,8 +694,6 @@ export default function POS() {
     if (!validateBeforeBill()) return;
     setStaffAuthModal({ action });
   };
-
-  const proceedToBill = () => requestStaffAuth('save');
 
   keyboardHandlersRef.current = {
     requestStaffAuth,
@@ -682,8 +791,8 @@ export default function POS() {
 
   const CartPanel = (
     <Panel className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-border px-5 py-4 md:px-6 md:py-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="shrink-0 border-b border-border px-4 py-3 md:px-5">
+        <div className="mb-2.5 flex items-center justify-between gap-3">
           <h3 style={{ fontFamily: 'var(--font-heading)' }} className="text-[15px] font-semibold text-foreground md:text-base">
             Current Sale
           </h3>
@@ -695,7 +804,7 @@ export default function POS() {
         <button
           type="button"
           onClick={openProductModal}
-          className="mb-3 flex h-10 w-full items-center gap-3 rounded-lg border border-border bg-background px-3 text-left transition-colors hover:border-primary/40 hover:bg-secondary/30 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
+          className="mb-2 flex h-9 w-full items-center gap-3 rounded-lg border border-border bg-background px-3 text-left transition-colors hover:border-primary/40 hover:bg-secondary/30 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
           <Search size={16} className="shrink-0 text-muted-foreground" strokeWidth={1.75} />
           <span className="flex-1 text-[13px] text-muted-foreground">Search and add products…</span>
           <span className="hidden rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
@@ -703,40 +812,59 @@ export default function POS() {
           </span>
         </button>
 
-        <select
-          value={selectedClient || ''}
-          onChange={(e) => setSelectedClient(e.target.value)}
-          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
-          <option value="">Walk-in Customer</option>
-          {selectedClient && !['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'].includes(selectedClient) && (
-            <option value={selectedClient}>{selectedClient}</option>
-          )}
-          <option value="Emma Wilson">Emma Wilson</option>
-          <option value="Sarah Johnson">Sarah Johnson</option>
-          <option value="Michael Brown">Michael Brown</option>
-          <option value="Jessica Davis">Jessica Davis</option>
-        </select>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <select
+            value={backendEnabled ? (selectedClientId || '') : (selectedClient || '')}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (!value) {
+                setSelectedClient(null);
+                setSelectedClientId(null);
+                return;
+              }
+              if (backendEnabled) {
+                const client = posClients.find((row) => row.id === value);
+                setSelectedClient(client?.name ?? null);
+                setSelectedClientId(client?.id ?? null);
+                return;
+              }
+              setSelectedClient(value);
+              setSelectedClientId(null);
+            }}
+            className="h-8 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
+            <option value="">Walk-in Customer</option>
+            {backendEnabled ? (
+              posClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))
+            ) : (
+              <>
+                {selectedClient && !fallbackClients.includes(selectedClient) && (
+                  <option value={selectedClient}>{selectedClient}</option>
+                )}
+                {fallbackClients.map((client) => (
+                  <option key={client} value={client}>
+                    {client}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={openTreatmentModal}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-border bg-background px-3 text-[12px] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-secondary/30">
+            <Sparkles size={14} strokeWidth={1.75} />
+            Treatment
+          </button>
+        </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4 md:px-6">
-        <button
-          type="button"
-          onClick={openTreatmentModal}
-          className="mb-3 flex w-full shrink-0 items-center justify-between rounded-lg border border-dashed border-border bg-background px-3.5 py-3 text-left transition-colors hover:border-primary/40 hover:bg-secondary/30">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-primary">
-              <Sparkles size={15} strokeWidth={1.75} />
-            </div>
-            <div>
-              <p className="text-[13px] font-medium text-foreground">Add treatment bill</p>
-              <p className="text-[11px] text-muted-foreground">Custom service or procedure</p>
-            </div>
-          </div>
-          <Plus size={16} className="text-muted-foreground" strokeWidth={1.75} />
-        </button>
-
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3 md:px-5">
         <div className="min-h-0 flex-1 overflow-y-auto scroll-area">
-          <div className="space-y-2 pb-1">
+          <div className="space-y-1.5 pb-1">
           <AnimatePresence>
             {cart.map((item) => (
               <motion.div
@@ -744,31 +872,30 @@ export default function POS() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 md:px-5">
+                className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium text-foreground md:text-sm">{item.name}</div>
-                  <div className="text-[11px] text-muted-foreground md:text-[12px]">{formatCurrency(item.price)} each</div>
+                  <div className="truncate text-[12px] font-medium text-foreground md:text-[13px]">{item.name}</div>
                 </div>
                 <div className="flex items-center justify-center gap-1.5">
                   <button
                     onClick={() => updateQuantity(item.id, -1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-destructive/30 hover:text-destructive">
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-destructive/30 hover:text-destructive">
                     <Minus size={12} strokeWidth={2} />
                   </button>
-                  <span className="min-w-[2rem] text-center text-[14px] font-semibold tabular-nums text-foreground">{item.quantity}</span>
+                  <span className="min-w-[1.5rem] text-center text-[12px] font-semibold tabular-nums text-foreground">{item.quantity}</span>
                   <button
                     onClick={() => updateQuantity(item.id, 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">
                     <Plus size={12} strokeWidth={2} />
                   </button>
                 </div>
                 <div className="flex items-center justify-end gap-2">
-                  <div className="text-right text-[13px] font-medium tabular-nums text-foreground md:text-sm">
+                  <div className="text-right text-[12px] font-medium tabular-nums text-foreground md:text-[13px]">
                     {formatCurrency(item.price * item.quantity, true)}
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
-                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
                     <Trash2 size={14} strokeWidth={1.75} />
                   </button>
                 </div>
@@ -792,12 +919,12 @@ export default function POS() {
       </div>
 
       {cart.length > 0 && (
-        <div className="shrink-0 border-t border-border px-4 pb-3 pt-3 md:px-5 md:pb-4">
-          <div className="mb-2.5 space-y-2">
+        <div className="shrink-0 border-t border-border px-4 pb-2.5 pt-2.5 md:px-5">
+          <div className="space-y-1.5">
             {/* Disc · Credit · Tax — boxed row */}
-            <div className={`grid gap-2 ${creditEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              <div className="rounded-lg border border-border bg-background px-2.5 py-2">
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Disc</div>
+            <div className={`grid gap-1.5 ${creditEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className="rounded-lg border border-border bg-background px-2 py-1.5">
+                <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Disc</div>
                 <input
                   type="number"
                   placeholder="%"
@@ -805,16 +932,16 @@ export default function POS() {
                   onChange={(e) => setDiscount(e.target.value)}
                   min="0"
                   max="100"
-                  className="h-7 w-full rounded-md border border-border bg-card px-2 text-[12px] tabular-nums focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                  className="h-6 w-full rounded-md border border-border bg-card px-2 text-[11px] tabular-nums focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
                 />
-                <div className={`mt-1.5 text-[10px] font-medium tabular-nums ${discountAmount > 0 ? 'text-[#159B61]' : 'text-muted-foreground'}`}>
+                <div className={`mt-1 text-[9px] font-medium tabular-nums ${discountAmount > 0 ? 'text-[#159B61]' : 'text-muted-foreground'}`}>
                   {discountAmount > 0 ? `-${formatCurrency(discountAmount, true)}` : formatCurrency(0, true)}
                 </div>
               </div>
 
               {creditEnabled && (
-                <div className="rounded-lg border border-border bg-background px-2.5 py-2">
-                  <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Credit</div>
+                <div className="rounded-lg border border-border bg-background px-2 py-1.5">
+                  <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Credit</div>
                   <input
                     type="number"
                     placeholder="0"
@@ -822,17 +949,17 @@ export default function POS() {
                     onChange={(e) => setCreditAmount(e.target.value)}
                     min="0"
                     max={total}
-                    className="h-7 w-full rounded-md border border-border bg-card px-2 text-[12px] tabular-nums focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+                    className="h-6 w-full rounded-md border border-border bg-card px-2 text-[11px] tabular-nums focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
                   />
-                  <div className={`mt-1.5 text-[10px] font-medium tabular-nums ${appliedCredit > 0 ? 'text-[#A86F00]' : 'text-muted-foreground'}`}>
+                  <div className={`mt-1 text-[9px] font-medium tabular-nums ${appliedCredit > 0 ? 'text-[#A86F00]' : 'text-muted-foreground'}`}>
                     {formatCurrency(appliedCredit, true)}
                   </div>
                 </div>
               )}
 
-              <div className="rounded-lg border border-border bg-background px-2.5 py-2">
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tax</div>
-                <label className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[11px] text-muted-foreground">
+              <div className="rounded-lg border border-border bg-background px-2 py-1.5">
+                <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Tax</div>
+                <label className="flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 text-[11px] text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={includeTax}
@@ -841,7 +968,7 @@ export default function POS() {
                   />
                   <span className="font-medium tabular-nums text-foreground">{taxRatePercent}%</span>
                 </label>
-                <div className={`mt-1.5 text-[10px] font-medium tabular-nums ${includeTax && taxAmount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                <div className={`mt-1 text-[9px] font-medium tabular-nums ${includeTax && taxAmount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {includeTax ? formatCurrency(taxAmount, true) : formatCurrency(0, true)}
                 </div>
               </div>
@@ -903,12 +1030,7 @@ export default function POS() {
             )}
           </div>
 
-          <button
-            onClick={proceedToBill}
-            className="w-full rounded-lg bg-foreground py-2 text-[12px] font-semibold text-background transition-opacity hover:opacity-90">
-            Proceed to Bill
-          </button>
-          <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
+          <p className="pt-1 text-center text-[10px] text-muted-foreground">
             Ctrl+S save · Ctrl+P print · staff password required
           </p>
         </div>
@@ -1016,8 +1138,12 @@ export default function POS() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-[13px] font-medium">{product.name}</div>
-                              <div className={`text-[11px] ${isActive ? 'text-background/70' : 'text-muted-foreground'}`}>
-                                {product.category} · SKU-{String(product.id).padStart(3, '0')}
+                              <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] ${isActive ? 'text-background/70' : 'text-muted-foreground'}`}>
+                                <span>{product.category}</span>
+                                <span>·</span>
+                                <span>{product.code || `SKU-${String(product.id).padStart(3, '0')}`}</span>
+                                <span>·</span>
+                                <span>{product.stock >= 500 ? 'Available' : `${product.stock} qty`}</span>
                               </div>
                             </div>
                             <div className="shrink-0 text-right">

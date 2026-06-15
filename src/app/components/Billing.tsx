@@ -22,6 +22,12 @@ import {
   INVOICES_UPDATED_EVENT,
 } from '../lib/invoices';
 import {
+  canUseBackend,
+  fetchInvoices,
+  markBackendInvoicePaid,
+  type BackendInvoiceWithItems,
+} from '../lib/backend';
+import {
   ThermalInvoicePaper,
   buildThermalInvoiceHtml,
   getThermalInvoicePageHeightMm,
@@ -119,26 +125,76 @@ function formatShortDate(date: string) {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+const mapBackendInvoice = (invoice: BackendInvoiceWithItems): Invoice => ({
+  id: invoice.id,
+  clientId: invoice.client_id ?? undefined,
+  client: invoice.client_name,
+  date: invoice.invoice_date,
+  dueDate: invoice.due_date,
+  amount: Number(invoice.amount || 0),
+  status: invoice.status,
+  creditAmount: invoice.credit_amount ?? undefined,
+  paidAmount: invoice.paid_amount ?? undefined,
+  paymentMethod: invoice.payment_method ?? undefined,
+  items: (invoice.invoice_items || []).map((item) => ({
+    productId: item.product_id ?? undefined,
+    name: item.name,
+    quantity: item.quantity,
+    price: Number(item.price || 0),
+  })),
+  subtotal: Number(invoice.subtotal || 0),
+  discount: Number(invoice.discount || 0),
+  tax: Number(invoice.tax || 0),
+  total: Number(invoice.total || 0),
+});
+
 export default function Billing() {
-  const [invoices, setInvoicesState] = useState<Invoice[]>(() => loadInvoices(initialInvoices));
+  const backendEnabled = canUseBackend();
+  const [invoices, setInvoicesState] = useState<Invoice[]>(() => (canUseBackend() ? [] : loadInvoices(initialInvoices)));
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [backendError, setBackendError] = useState('');
 
   const setInvoices = useCallback((updater: Invoice[] | ((prev: Invoice[]) => Invoice[])) => {
     setInvoicesState((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveInvoices(next);
+      if (!backendEnabled) {
+        saveInvoices(next);
+      }
       return next;
     });
-  }, []);
+  }, [backendEnabled]);
 
   useEffect(() => {
+    if (backendEnabled) return;
     const refresh = () => setInvoicesState(loadInvoices(initialInvoices));
     window.addEventListener(INVOICES_UPDATED_EVENT, refresh);
     return () => window.removeEventListener(INVOICES_UPDATED_EVENT, refresh);
-  }, []);
+  }, [backendEnabled]);
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+
+    let ignore = false;
+    fetchInvoices()
+      .then((rows) => {
+        if (!ignore) {
+          setInvoicesState(rows.map(mapBackendInvoice));
+          setBackendError('');
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setBackendError('Could not load invoices from Supabase. Please run billing_backend_setup.sql and check login/RLS.');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled]);
 
   const filteredInvoices = invoices.filter(
     (invoice) =>
@@ -158,7 +214,43 @@ export default function Billing() {
       .reduce((sum, inv) => sum + (inv.creditAmount ?? 0), 0),
   };
 
-  const markAsPaid = (id: string) => {
+  const markAsPaid = async (id: string) => {
+    if (backendEnabled) {
+      try {
+        const savedInvoice = await markBackendInvoicePaid(id);
+        setInvoices((prev) =>
+          prev.map((inv) =>
+            inv.id === id
+              ? {
+                  ...inv,
+                  status: savedInvoice.status,
+                  creditAmount: savedInvoice.credit_amount ?? undefined,
+                  paidAmount: savedInvoice.paid_amount ?? inv.total,
+                }
+              : inv
+          )
+        );
+        if (selectedInvoice?.id === id) {
+          setSelectedInvoice((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: savedInvoice.status,
+                  creditAmount: savedInvoice.credit_amount ?? undefined,
+                  paidAmount: savedInvoice.paid_amount ?? prev.total,
+                }
+              : null
+          );
+        }
+        setBackendError('');
+        setSuccessMessage('Invoice marked as paid!');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } catch {
+        setBackendError('Invoice was not updated in Supabase. Please check Billing backend setup.');
+      }
+      return;
+    }
+
     setInvoices((prev) =>
       prev.map((inv) =>
         inv.id === id
@@ -189,6 +281,12 @@ export default function Billing() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendError && (
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
+          {backendError}
+        </div>
+      )}
 
       {/* KPI row */}
       <div className="mb-4 grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3 lg:gap-4">

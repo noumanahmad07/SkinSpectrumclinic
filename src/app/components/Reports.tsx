@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Download, FileText, Banknote, Receipt, Users, TrendingUp, Check } from 'lucide-react';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie,
@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import ssaLogo from '../../assets/ssa-logo.png';
+import { canUseBackend, fetchReportsData } from '../lib/backend';
 
 const dataByRange = {
   today: {
@@ -54,6 +55,13 @@ const dataByRange = {
   },
 };
 
+const emptyDataByRange: typeof dataByRange = {
+  today: { revenue: [], total: 0 },
+  week: { revenue: [], total: 0 },
+  month: { revenue: [], total: 0 },
+  custom: { revenue: [], total: 0 },
+};
+
 const categoryData = [
   { category: 'Treatments', sales: 45000 },
   { category: 'Serums', sales: 32000 },
@@ -75,6 +83,8 @@ const paymentMethodsData = [
   { name: 'Card', value: 38, color: '#2ECC8A' },
   { name: 'Bank Transfer', value: 20, color: '#F0A500' },
 ];
+
+const paymentColors = ['#C9A96E', '#2ECC8A', '#F0A500', '#8F609A', '#1A1025'];
 
 const topProducts = [
   { product: 'Facial Treatment - Premium', revenue: 28000, units: 100 },
@@ -180,10 +190,75 @@ function KPICard({
 }
 
 export default function Reports() {
+  const backendEnabled = canUseBackend();
   const [dateRange, setDateRange] = useState<keyof typeof dataByRange>('month');
   const [exportSuccess, setExportSuccess] = useState('');
+  const [backendError, setBackendError] = useState('');
+  const [reportData, setReportData] = useState(() => (canUseBackend() ? emptyDataByRange : dataByRange));
+  const [categoryReportData, setCategoryReportData] = useState(() => (canUseBackend() ? [] : categoryData));
+  const [clientGrowthReportData, setClientGrowthReportData] = useState(() => (canUseBackend() ? [] : clientGrowthData));
+  const [paymentMethodReportData, setPaymentMethodReportData] = useState(() => (canUseBackend() ? [] : paymentMethodsData));
+  const [topProductReportData, setTopProductReportData] = useState(() => (canUseBackend() ? [] : topProducts));
+  const [topClientReportData, setTopClientReportData] = useState(() => (canUseBackend() ? [] : topClients));
+  const [summary, setSummary] = useState({
+    transactions: canUseBackend() ? 0 : 89,
+    newClients: canUseBackend() ? 0 : 12,
+  });
 
-  const currentData = dataByRange[dateRange];
+  useEffect(() => {
+    if (!backendEnabled) return;
+
+    let ignore = false;
+    fetchReportsData()
+      .then((data) => {
+        if (ignore) return;
+        setReportData({
+          today: { revenue: data.revenue.today, total: data.revenue.today.reduce((sum, row) => sum + Number(row.revenue || 0), 0) },
+          week: { revenue: data.revenue.week, total: data.revenue.week.reduce((sum, row) => sum + Number(row.revenue || 0), 0) },
+          month: { revenue: data.revenue.month, total: data.revenue.month.reduce((sum, row) => sum + Number(row.revenue || 0), 0) },
+          custom: { revenue: data.revenue.custom, total: data.revenue.custom.reduce((sum, row) => sum + Number(row.revenue || 0), 0) },
+        });
+        setCategoryReportData(data.categorySales.map((row) => ({ category: row.category, sales: Number(row.sales || 0) })));
+        setClientGrowthReportData(data.clientGrowth);
+        setPaymentMethodReportData(
+          data.paymentMethods.length
+            ? data.paymentMethods.map((row, index) => ({
+                name: row.name,
+                value: Number(row.value || 0),
+                color: paymentColors[index % paymentColors.length],
+              }))
+            : []
+        );
+        setTopProductReportData(data.topProducts.length ? data.topProducts.map((row) => ({
+          product: row.product,
+          revenue: Number(row.revenue || 0),
+          units: row.units,
+        })) : []);
+        setTopClientReportData(data.topClients.length ? data.topClients.map((row) => ({
+          client: row.client,
+          totalSpent: Number(row.total_spent || 0),
+          visits: row.visits,
+        })) : []);
+        setSummary({
+          transactions: data.summary?.transactions || 0,
+          newClients: data.summary?.new_clients || 0,
+        });
+        setBackendError('');
+      })
+      .catch(() => {
+        if (!ignore) {
+          setBackendError('Could not load reports from Supabase. Please run reports_backend_setup.sql and check login/RLS.');
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled]);
+
+  const currentData = reportData[dateRange];
+  const transactions = summary.transactions || 0;
+  const newClients = summary.newClients || 0;
   const reportTitle = `Business Report - ${dateRange === 'today' ? 'Today' : dateRange === 'week' ? 'This Week' : dateRange === 'month' ? 'This Month' : 'Custom Range'}`;
   const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -239,9 +314,9 @@ export default function Reports() {
           <section class="section">
             <div class="kpis">
               <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${formatCurrency(currentData.total)}</div></div>
-              <div class="kpi"><div class="kpi-label">Transactions</div><div class="kpi-value">89</div></div>
-              <div class="kpi"><div class="kpi-label">New Clients</div><div class="kpi-value">12</div></div>
-              <div class="kpi"><div class="kpi-label">Avg. Order</div><div class="kpi-value">${formatCurrency(Math.round(currentData.total / 89))}</div></div>
+              <div class="kpi"><div class="kpi-label">Transactions</div><div class="kpi-value">${transactions}</div></div>
+              <div class="kpi"><div class="kpi-label">New Clients</div><div class="kpi-value">${newClients}</div></div>
+              <div class="kpi"><div class="kpi-label">Avg. Order</div><div class="kpi-value">${formatCurrency(transactions ? Math.round(currentData.total / transactions) : 0)}</div></div>
             </div>
           </section>
           <section class="section">
@@ -255,21 +330,21 @@ export default function Reports() {
             <h2>Sales by Category</h2>
             <table>
               <thead><tr><th>Category</th><th class="right">Sales</th></tr></thead>
-              <tbody>${categoryData.map((row) => `<tr><td>${row.category}</td><td class="right">${formatCurrency(row.sales)}</td></tr>`).join('')}</tbody>
+              <tbody>${categoryReportData.map((row) => `<tr><td>${row.category}</td><td class="right">${formatCurrency(row.sales)}</td></tr>`).join('')}</tbody>
             </table>
           </section>
           <section class="section">
             <h2>Top Products</h2>
             <table>
               <thead><tr><th>Product</th><th class="right">Units</th><th class="right">Revenue</th></tr></thead>
-              <tbody>${topProducts.map((row) => `<tr><td>${row.product}</td><td class="right">${row.units}</td><td class="right">${formatCurrency(row.revenue)}</td></tr>`).join('')}</tbody>
+              <tbody>${topProductReportData.map((row) => `<tr><td>${row.product}</td><td class="right">${row.units}</td><td class="right">${formatCurrency(row.revenue)}</td></tr>`).join('')}</tbody>
             </table>
           </section>
           <section class="section">
             <h2>Top Clients</h2>
             <table>
               <thead><tr><th>Client</th><th class="right">Visits</th><th class="right">Total Spent</th></tr></thead>
-              <tbody>${topClients.map((row) => `<tr><td>${row.client}</td><td class="right">${row.visits}</td><td class="right">${formatCurrency(row.totalSpent)}</td></tr>`).join('')}</tbody>
+              <tbody>${topClientReportData.map((row) => `<tr><td>${row.client}</td><td class="right">${row.visits}</td><td class="right">${formatCurrency(row.totalSpent)}</td></tr>`).join('')}</tbody>
             </table>
           </section>
         </main>
@@ -312,9 +387,9 @@ export default function Reports() {
           <table border="1">
             <tr><th colspan="2">Summary</th></tr>
             <tr><td>Total Revenue</td><td>${currentData.total}</td></tr>
-            <tr><td>Transactions</td><td>89</td></tr>
-            <tr><td>New Clients</td><td>12</td></tr>
-            <tr><td>Average Order</td><td>${Math.round(currentData.total / 89)}</td></tr>
+            <tr><td>Transactions</td><td>${transactions}</td></tr>
+            <tr><td>New Clients</td><td>${newClients}</td></tr>
+            <tr><td>Average Order</td><td>${transactions ? Math.round(currentData.total / transactions) : 0}</td></tr>
           </table>
           <br />
           <table border="1">
@@ -326,19 +401,19 @@ export default function Reports() {
           <table border="1">
             <tr><th colspan="2">Sales by Category</th></tr>
             <tr><th>Category</th><th>Sales</th></tr>
-            ${categoryData.map((row) => `<tr><td>${row.category}</td><td>${row.sales}</td></tr>`).join('')}
+            ${categoryReportData.map((row) => `<tr><td>${row.category}</td><td>${row.sales}</td></tr>`).join('')}
           </table>
           <br />
           <table border="1">
             <tr><th colspan="3">Top Products</th></tr>
             <tr><th>Product</th><th>Units</th><th>Revenue</th></tr>
-            ${topProducts.map((row) => `<tr><td>${row.product}</td><td>${row.units}</td><td>${row.revenue}</td></tr>`).join('')}
+            ${topProductReportData.map((row) => `<tr><td>${row.product}</td><td>${row.units}</td><td>${row.revenue}</td></tr>`).join('')}
           </table>
           <br />
           <table border="1">
             <tr><th colspan="3">Top Clients</th></tr>
             <tr><th>Client</th><th>Visits</th><th>Total Spent</th></tr>
-            ${topClients.map((row) => `<tr><td>${row.client}</td><td>${row.visits}</td><td>${row.totalSpent}</td></tr>`).join('')}
+            ${topClientReportData.map((row) => `<tr><td>${row.client}</td><td>${row.visits}</td><td>${row.totalSpent}</td></tr>`).join('')}
           </table>
         </body>
       </html>
@@ -355,7 +430,7 @@ export default function Reports() {
     showExportSuccess('Excel report downloaded');
   };
 
-  const avgOrder = Math.round(currentData.total / 89);
+  const avgOrder = transactions ? Math.round(currentData.total / transactions) : 0;
   const revenueSubtitle =
     dateRange === 'today' ? 'Hourly performance' : dateRange === 'week' ? '7-day performance' : 'Daily performance';
 
@@ -373,6 +448,12 @@ export default function Reports() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendError && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
+          {backendError}
+        </div>
+      )}
 
       {/* Toolbar */}
       <Panel className="p-4">
@@ -414,8 +495,8 @@ export default function Reports() {
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <KPICard title="Total Revenue" value={formatCurrency(currentData.total)} icon={<Banknote size={15} strokeWidth={1.75} />} accent="gold" />
-        <KPICard title="Transactions" value="89" icon={<Receipt size={15} strokeWidth={1.75} />} accent="success" />
-        <KPICard title="New Clients" value="12" icon={<Users size={15} strokeWidth={1.75} />} accent="warning" />
+        <KPICard title="Transactions" value={String(transactions)} icon={<Receipt size={15} strokeWidth={1.75} />} accent="success" />
+        <KPICard title="New Clients" value={String(newClients)} icon={<Users size={15} strokeWidth={1.75} />} accent="warning" />
         <KPICard title="Avg. Order" value={formatCurrency(avgOrder)} icon={<TrendingUp size={15} strokeWidth={1.75} />} accent="plum" />
       </div>
 
@@ -452,7 +533,7 @@ export default function Reports() {
         <Panel className="p-4 md:p-5">
           <PanelHeader title="Sales by Category" subtitle="Revenue breakdown" />
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={categoryData} barSize={28}>
+            <BarChart data={categoryReportData} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="category" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={44} />
@@ -465,7 +546,7 @@ export default function Reports() {
         <Panel className="p-4 md:p-5">
           <PanelHeader title="Client Growth" subtitle="Monthly active clients" />
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={clientGrowthData}>
+            <AreaChart data={clientGrowthReportData}>
               <defs>
                 <linearGradient id="reportClients" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#2ECC8A" stopOpacity={0.25} />
@@ -489,8 +570,8 @@ export default function Reports() {
           <div className="mx-auto w-full max-w-[200px]">
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie data={paymentMethodsData} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={4} dataKey="value">
-                  {paymentMethodsData.map((entry, index) => (
+                <Pie data={paymentMethodReportData} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={4} dataKey="value">
+                  {paymentMethodReportData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                   ))}
                 </Pie>
@@ -499,7 +580,7 @@ export default function Reports() {
             </ResponsiveContainer>
           </div>
           <div className="space-y-2">
-            {paymentMethodsData.map((item) => (
+            {paymentMethodReportData.map((item) => (
               <div key={item.name} className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
                 <div className="flex items-center gap-2.5">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
@@ -522,7 +603,7 @@ export default function Reports() {
         <Panel className="p-4 md:p-5">
           <PanelHeader title="Top Products" subtitle="By revenue" />
           <div className="space-y-1.5">
-            {topProducts.map((item, idx) => (
+            {topProductReportData.map((item, idx) => (
               <div key={item.product} className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-3 py-2.5 transition-colors hover:bg-muted/30">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-secondary text-[11px] font-semibold text-primary">
@@ -544,7 +625,7 @@ export default function Reports() {
         <Panel className="p-4 md:p-5">
           <PanelHeader title="Top Clients" subtitle="By total spent" />
           <div className="space-y-1.5">
-            {topClients.map((item) => (
+            {topClientReportData.map((item) => (
               <div key={item.client} className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-3 py-2.5 transition-colors hover:bg-muted/30">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">

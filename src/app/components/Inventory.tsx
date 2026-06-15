@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, AlertTriangle, ShieldAlert, Check, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  canUseBackend,
+  createBackendProduct,
+  deleteBackendProduct,
+  fetchInventoryProducts,
+  updateBackendProduct,
+  type BackendInventoryProduct,
+  type BackendProduct,
+  type BackendProductInput,
+} from '../lib/backend';
 
 interface Product {
-  id: number;
+  id: number | string;
   code: string;
   name: string;
   category: string;
@@ -17,6 +27,54 @@ interface Product {
   status: 'Active' | 'Inactive';
   image: string;
 }
+
+const mapBackendProduct = (product: BackendInventoryProduct | BackendProduct): Product => ({
+  id: product.id,
+  code: product.code,
+  name: product.name,
+  category: product.category,
+  description: product.description,
+  costPrice: Number(product.cost_price || 0),
+  sellPrice: Number(product.sell_price || 0),
+  stock: product.stock,
+  minStock: product.min_stock,
+  unit: product.unit,
+  expiry: product.expiry || '',
+  status: product.status,
+  image: product.image || '',
+});
+
+const toBackendProductInput = (product: Omit<Product, 'id'>): BackendProductInput => ({
+  code: product.code,
+  name: product.name,
+  category: product.category,
+  description: product.description,
+  cost_price: product.costPrice,
+  sell_price: product.sellPrice,
+  stock: product.stock,
+  min_stock: product.minStock,
+  unit: product.unit,
+  expiry: product.expiry || null,
+  status: product.status,
+  image: product.image,
+});
+
+const generateNextSku = (items: Product[]) => {
+  const maxSkuNumber = items.reduce((max, item) => {
+    const match = item.code.match(/^SKU-(\d+)$/i);
+    if (!match) return max;
+    return Math.max(max, Number(match[1]) || 0);
+  }, 0);
+
+  return `SKU-${String(maxSkuNumber + 1).padStart(3, '0')}`;
+};
+
+const formatBackendError = (fallback: string, error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return `${fallback} ${error.message}`;
+  }
+  return fallback;
+};
 
 const initialInventory: Product[] = [
   {
@@ -117,19 +175,51 @@ const getExpiryStatus = (expiry: string) => {
   const days = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   if (days < 0) return { label: 'Expired', color: '#E5445A', bg: '#E5445A14', days };
-  if (days <= 30) return { label: 'Near Expiry', color: '#F0A500', bg: '#F0A50014', days };
+  if (days <= 60) return { label: 'Near Expiry', color: '#F0A500', bg: '#F0A50014', days };
   return { label: 'Valid', color: '#2ECC8A', bg: '#2ECC8A14', days };
 };
 
 export default function Inventory() {
-  const [inventory, setInventory] = useState<Product[]>(initialInventory);
+  const backendEnabled = canUseBackend();
+  const [inventory, setInventory] = useState<Product[]>(() => (canUseBackend() ? [] : initialInventory));
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | string | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [backendError, setBackendError] = useState('');
+
+  const loadBackendInventory = useCallback(async () => {
+    const rows = await fetchInventoryProducts();
+    setInventory(rows.map(mapBackendProduct));
+    setBackendError('');
+  }, []);
+
+  useEffect(() => {
+    if (!backendEnabled) {
+      setBackendError('Supabase is not configured. Products added here are local only and will disappear after refresh or navigation.');
+      return;
+    }
+
+    let ignore = false;
+    loadBackendInventory()
+      .then(() => {
+        if (!ignore) {
+          setBackendError('');
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setBackendError(formatBackendError('Could not load inventory from Supabase.', error));
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [backendEnabled, loadBackendInventory]);
 
   const categories = Array.from(new Set(inventory.map((item) => item.category)));
 
@@ -150,34 +240,93 @@ export default function Inventory() {
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
-  const addProduct = (data: Omit<Product, 'id' | 'code'>) => {
-    const newProduct: Product = {
+  const addProduct = async (data: Omit<Product, 'id' | 'code'>) => {
+    const productToSave: Omit<Product, 'id'> = {
       ...data,
-      id: Date.now(),
-      code: `SKU-${String(inventory.length + 1).padStart(3, '0')}`,
+      code: generateNextSku(inventory),
     };
-    setInventory((prev) => [newProduct, ...prev]);
+
+    if (backendEnabled) {
+      try {
+        const savedProduct = await createBackendProduct(toBackendProductInput(productToSave));
+        setInventory((prev) => [mapBackendProduct(savedProduct), ...prev.filter((item) => item.id !== savedProduct.id)]);
+        await loadBackendInventory();
+        setBackendError('');
+      } catch (error) {
+        setBackendError(formatBackendError('Product was not saved to Supabase.', error));
+        return;
+      }
+    } else {
+      const newProduct: Product = {
+        ...productToSave,
+        id: Date.now(),
+      };
+      setInventory((prev) => [newProduct, ...prev]);
+      setBackendError('Supabase is not configured. This product was added locally only and was not saved to backend.');
+    }
+
     setShowAddProduct(false);
     showSuccess(`${data.name} added to inventory`);
   };
 
-  const updateProduct = (updated: Product) => {
-    setInventory((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  const updateProduct = async (updated: Product) => {
+    let savedProduct = updated;
+
+    if (backendEnabled && typeof updated.id === 'string') {
+      try {
+        const backendProduct = await updateBackendProduct(updated.id, toBackendProductInput(updated));
+        savedProduct = mapBackendProduct(backendProduct);
+        await loadBackendInventory();
+        setBackendError('');
+      } catch (error) {
+        setBackendError(formatBackendError('Product changes were not saved to Supabase.', error));
+        return;
+      }
+    }
+
+    setInventory((prev) => prev.map((p) => (p.id === savedProduct.id ? savedProduct : p)));
     setEditProduct(null);
-    showSuccess(`${updated.name} updated successfully`);
+    showSuccess(`${savedProduct.name} updated successfully`);
   };
 
-  const deleteProduct = (id: number) => {
+  const deleteProduct = async (id: number | string) => {
     const product = inventory.find((p) => p.id === id);
+    if (backendEnabled && typeof id === 'string') {
+      try {
+        await deleteBackendProduct(id);
+        await loadBackendInventory();
+        setBackendError('');
+      } catch (error) {
+        setBackendError(formatBackendError('Product was not deleted from Supabase.', error));
+        return;
+      }
+    }
+
     setInventory((prev) => prev.filter((p) => p.id !== id));
     setDeleteConfirm(null);
     showSuccess(`${product?.name} removed from inventory`);
   };
 
-  const toggleStatus = (id: number) => {
-    setInventory((prev) =>
-      prev.map((p) => p.id === id ? { ...p, status: p.status === 'Active' ? 'Inactive' : 'Active' } : p)
-    );
+  const toggleStatus = async (id: number | string) => {
+    const product = inventory.find((p) => p.id === id);
+    if (!product) return;
+
+    const nextStatus = product.status === 'Active' ? 'Inactive' : 'Active';
+
+    if (backendEnabled && typeof id === 'string') {
+      try {
+        const savedProduct = await updateBackendProduct(id, { status: nextStatus });
+        setInventory((prev) => prev.map((p) => (p.id === id ? mapBackendProduct(savedProduct) : p)));
+        await loadBackendInventory();
+        setBackendError('');
+        return;
+      } catch (error) {
+        setBackendError(formatBackendError('Product status was not updated in Supabase.', error));
+        return;
+      }
+    }
+
+    setInventory((prev) => prev.map((p) => p.id === id ? { ...p, status: nextStatus } : p));
   };
 
   return (
@@ -194,6 +343,12 @@ export default function Inventory() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {backendError && (
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-2.5 text-[13px] font-medium text-destructive">
+          {backendError}
+        </div>
+      )}
 
       {/* KPI row */}
       <div className="mb-4 grid shrink-0 grid-cols-3 gap-3">
@@ -665,26 +820,54 @@ function ProductFormModal({
     status: product?.status || 'Active' as 'Active' | 'Inactive',
     image: product?.image || '💧',
   });
+  const [errors, setErrors] = useState<{ details?: string; pricing?: string; inventory?: string; expiry?: string }>({});
 
   const labelClass = 'mb-1.5 block text-[12px] font-medium text-foreground';
   const fieldClass =
     'h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15';
   const sectionClass = 'space-y-3 rounded-lg border border-border bg-muted/20 p-3.5';
   const sectionTitleClass = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
+  const sectionErrorClass = 'rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] font-medium text-destructive';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.sellPrice) return;
+    const costPrice = parseFloat(form.costPrice) || 0;
+    const sellPrice = parseFloat(form.sellPrice);
+    const stock = parseInt(form.stock, 10);
+    const minStock = parseInt(form.minStock, 10);
+    const expiryStatus = getExpiryStatus(form.expiry);
+
+    if (!form.name.trim()) {
+      setErrors({ details: 'Product name is required' });
+      return;
+    }
+    if (!Number.isFinite(sellPrice)) {
+      setErrors({ pricing: 'Sell price is required' });
+      return;
+    }
+    if (costPrice > sellPrice) {
+      setErrors({ pricing: 'Cost price cannot be more than sell price' });
+      return;
+    }
+    if ((form.stock.trim() && (!Number.isFinite(stock) || stock < 0)) || (form.minStock.trim() && (!Number.isFinite(minStock) || minStock < 0))) {
+      setErrors({ inventory: 'Stock and minimum stock cannot be negative' });
+      return;
+    }
+    if (form.expiry && expiryStatus.label === 'Expired') {
+      setErrors({ expiry: 'Expired products cannot be added to inventory' });
+      return;
+    }
+    setErrors({});
 
     const data = {
       ...(product ? { id: product.id, code: product.code } : {}),
-      name: form.name,
+      name: form.name.trim(),
       category: form.category || 'General',
       description: form.description,
-      costPrice: parseFloat(form.costPrice) || 0,
-      sellPrice: parseFloat(form.sellPrice),
-      stock: parseInt(form.stock) || 0,
-      minStock: parseInt(form.minStock) || 10,
+      costPrice,
+      sellPrice,
+      stock: Number.isFinite(stock) ? stock : 0,
+      minStock: Number.isFinite(minStock) ? minStock : 10,
       unit: form.unit,
       expiry: form.expiry,
       status: form.status,
@@ -725,7 +908,7 @@ function ProductFormModal({
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4 p-4 md:p-5">
             {/* Icon picker */}
             <div className={sectionClass}>
               <p className={sectionTitleClass}>Product Icon</p>
@@ -754,7 +937,6 @@ function ProductFormModal({
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
                   placeholder="e.g., Hydrating Serum"
                   className={fieldClass}
                 />
@@ -772,6 +954,7 @@ function ProductFormModal({
                 </select>
               </div>
             </div>
+            {errors.details && <div className={sectionErrorClass}>{errors.details}</div>}
 
             <div>
               <label className={labelClass}>Description</label>
@@ -806,7 +989,6 @@ function ProductFormModal({
                     type="number"
                     value={form.sellPrice}
                     onChange={(e) => setForm({ ...form, sellPrice: e.target.value })}
-                    required
                     min="0"
                     step="0.01"
                     placeholder="0.00"
@@ -814,6 +996,7 @@ function ProductFormModal({
                   />
                 </div>
               </div>
+              {errors.pricing && <div className={sectionErrorClass}>{errors.pricing}</div>}
             </div>
 
             {/* Inventory */}
@@ -864,6 +1047,7 @@ function ProductFormModal({
                   </select>
                 </div>
               </div>
+              {errors.inventory && <div className={sectionErrorClass}>{errors.inventory}</div>}
             </div>
 
             <div>
@@ -874,6 +1058,12 @@ function ProductFormModal({
                 onChange={(e) => setForm({ ...form, expiry: e.target.value })}
                 className={fieldClass}
               />
+              {form.expiry && getExpiryStatus(form.expiry).label === 'Near Expiry' && !errors.expiry && (
+                <div className="mt-2 rounded-lg border border-[#F0A500]/20 bg-[#F0A500]/10 px-3 py-2 text-[12px] font-medium text-[#A86F00]">
+                  This product is near to expire, but it can still be added.
+                </div>
+              )}
+              {errors.expiry && <div className={`mt-2 ${sectionErrorClass}`}>{errors.expiry}</div>}
             </div>
 
             <div className="flex gap-2 border-t border-border pt-4">

@@ -1,6 +1,7 @@
 import { useState, createContext, useContext, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import Login from './components/Login';
+import ResetPassword from './components/ResetPassword';
 import DashboardLayout from './components/DashboardLayout';
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
@@ -15,8 +16,11 @@ import {
   getSessionTimeoutMinutes,
   isPasswordChangeRequired,
   loadSettings,
+  patchSettings,
   SETTINGS_UPDATED_EVENT,
 } from './lib/settings';
+import { canUseBackend, fetchSettingsData, mapBackendSettings, signInStaff } from './lib/backend';
+import { signOutSupabase } from './lib/supabase';
 
 export interface AuthUser {
   name: string;
@@ -27,7 +31,7 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  login: (email: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearPasswordReminder: () => void;
 }
@@ -81,13 +85,67 @@ export default function App() {
   });
 
   const logout = useCallback(() => {
+    if (canUseBackend()) {
+      signOutSupabase().catch(() => {});
+    }
     setUser(null);
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
   }, []);
 
   useSessionTimeout(Boolean(user), logout);
 
-  const login = (email: string, password: string) => {
+  useEffect(() => {
+    if (!user || !canUseBackend()) return;
+    fetchSettingsData()
+      .then(({ clinicSettings, billPersons, staffProfiles }) => {
+        if (!clinicSettings) return;
+        const mapped = mapBackendSettings(clinicSettings);
+        patchSettings({
+          clinic: mapped.clinic,
+          billing: mapped.billing,
+          notifications: mapped.notifications,
+          security: mapped.security,
+          users: staffProfiles.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            password: '',
+            passwordChangedAt: profile.password_changed_at ?? undefined,
+            role: profile.role,
+            status: profile.status,
+          })),
+          billPersons: billPersons.map((person) => ({
+            id: person.id,
+            name: person.name,
+            password: '',
+            status: person.status,
+          })),
+        });
+      })
+      .catch(() => {});
+  }, [user]);
+
+  const login = async (email: string, password: string) => {
+    if (canUseBackend()) {
+      try {
+        const result = await signInStaff(email, password);
+        if (!result) return false;
+
+        const authenticatedUser: AuthUser = {
+          name: result.profile.name,
+          email: result.profile.email,
+          role: result.profile.role,
+          mustChangePassword: false,
+        };
+
+        setUser(authenticatedUser);
+        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authenticatedUser));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     const account = authenticateUser(email, password);
     if (!account) return false;
 
@@ -117,6 +175,7 @@ export default function App() {
       {/* MARKER-MAKE-KIT-INVOKED */}
       <BrowserRouter>
         <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/login" element={user ? <Navigate to={user.mustChangePassword ? '/settings?tab=security' : '/'} /> : <Login />} />
           <Route
             path="/*"

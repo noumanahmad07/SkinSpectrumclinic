@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Activity,
@@ -29,6 +29,16 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
+import {
+  canUseBackend,
+  fetchDashboardData,
+  type BackendClient,
+  type DashboardLowStock,
+  type DashboardRecentInvoice,
+  type DashboardRevenuePoint,
+  type DashboardSummary,
+  type DashboardTopProduct,
+} from '../lib/backend';
 
 const revenueData = [
   { day: 'Mon', revenue: 4500 },
@@ -62,7 +72,7 @@ const lowStockItems = [
 ];
 
 interface StoredClient {
-  id: number;
+  id: number | string;
   name: string;
   phone: string;
   email?: string;
@@ -114,6 +124,32 @@ const getClientAppointments = () => {
     .sort((a, b) => a.appointmentAt.getTime() - b.appointmentAt.getTime());
 };
 
+const mapBackendClient = (client: BackendClient): StoredClient => ({
+  id: client.id,
+  name: client.name,
+  phone: client.phone,
+  email: client.email || undefined,
+  skinType: client.skin_type,
+  totalSpent: Number(client.total_spent || 0),
+  concerns: client.concerns || [],
+  allergies: client.allergies,
+  notes: client.notes,
+  followUpDays: client.follow_up_days || undefined,
+  followUpDate: client.follow_up_date || undefined,
+  appointmentDate: client.appointment_date || undefined,
+  appointmentTime: client.appointment_time || undefined,
+});
+
+const buildAppointments = (clients: StoredClient[]) =>
+  clients
+    .filter((client) => client.appointmentDate && client.appointmentTime)
+    .map((client) => ({
+      ...client,
+      appointmentAt: new Date(`${client.appointmentDate}T${client.appointmentTime}`),
+    }))
+    .filter((client) => !Number.isNaN(client.appointmentAt.getTime()))
+    .sort((a, b) => a.appointmentAt.getTime() - b.appointmentAt.getTime());
+
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-xl border border-border bg-card p-5 shadow-sm ${className}`}>
@@ -145,35 +181,80 @@ function PanelHeader({
 }
 
 export default function Dashboard() {
+  const backendEnabled = canUseBackend();
   const navigate = useNavigate();
-  const dueFollowUps = getDueFollowUps();
-  const appointments = getClientAppointments();
+  const [dashboardData, setDashboardData] = useState<{
+    summary: DashboardSummary | null;
+    revenueTrend: DashboardRevenuePoint[];
+    topProducts: DashboardTopProduct[];
+    recentInvoices: DashboardRecentInvoice[];
+    lowStock: DashboardLowStock[];
+    todayAppointments: BackendClient[];
+    upcomingAppointments: BackendClient[];
+    dueFollowUps: BackendClient[];
+  } | null>(null);
+  const [backendError, setBackendError] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentClient | null>(null);
   const now = new Date();
+
+  useEffect(() => {
+    if (!backendEnabled) return;
+
+    fetchDashboardData()
+      .then(setDashboardData)
+      .catch(() => setBackendError('Dashboard backend data could not be loaded.'));
+  }, [backendEnabled]);
+
+  const localDueFollowUps = getDueFollowUps();
+  const localAppointments = getClientAppointments();
+  const dueFollowUps = dashboardData?.dueFollowUps.length
+    ? dashboardData.dueFollowUps.map(mapBackendClient)
+    : backendEnabled ? [] : localDueFollowUps;
+  const appointments = dashboardData?.todayAppointments.length
+    ? buildAppointments(dashboardData.todayAppointments.map(mapBackendClient))
+    : backendEnabled ? [] : localAppointments;
   const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
-  const upcomingAppointments = appointments.filter(
-    (client) => client.appointmentAt >= now && client.appointmentAt <= oneHourFromNow
-  );
-  const todayAppointments = appointments.filter(
-    (client) => client.appointmentAt >= todayStart && client.appointmentAt <= todayEnd
-  );
+  const upcomingAppointments = dashboardData?.upcomingAppointments.length
+    ? buildAppointments(dashboardData.upcomingAppointments.map(mapBackendClient))
+    : backendEnabled ? [] : appointments.filter((client) => client.appointmentAt >= now && client.appointmentAt <= oneHourFromNow);
+  const todayAppointments = appointments.filter((client) => client.appointmentAt >= todayStart && client.appointmentAt <= todayEnd);
 
-  const pendingInvoices = recentInvoices.filter((i) => i.status === 'Pending' || i.status === 'Overdue');
-  const pendingTotal = pendingInvoices.reduce((sum, i) => sum + i.amount, 0);
+  const dashboardSummary = dashboardData?.summary;
+  const dashboardRevenueData = dashboardData?.revenueTrend.length
+    ? dashboardData.revenueTrend.map((point) => ({ day: point.day, revenue: Number(point.revenue) }))
+    : backendEnabled ? [] : revenueData;
+  const dashboardTopProducts = dashboardData?.topProducts.length
+    ? dashboardData.topProducts.map((item, index) => ({
+        name: item.name,
+        value: Number(item.value || 0),
+        color: ['#C9A96E', '#A07840', '#2ECC8A', '#F0A500', '#8F609A'][index] || '#6B6570',
+      }))
+    : backendEnabled ? [] : topProductsData;
+  const dashboardRecentInvoices = dashboardData?.recentInvoices.length ? dashboardData.recentInvoices : backendEnabled ? [] : recentInvoices;
+  const dashboardLowStock = dashboardData?.lowStock.length ? dashboardData.lowStock : backendEnabled ? [] : lowStockItems;
+
+  const pendingInvoices = dashboardRecentInvoices.filter((i) => i.status === 'Pending' || i.status === 'Overdue' || i.status === 'Credit');
+  const pendingTotal = pendingInvoices.reduce((sum, i) => sum + Number(i.amount || 0), 0);
 
   const quickStats = [
-    { value: String(todayAppointments.length || 12), label: 'Appointments today' },
-    { value: String(pendingInvoices.length || 6), label: 'Pending checkouts' },
-    { value: formatCurrency(pendingTotal || 4200), label: 'Outstanding invoices' },
-    { value: String(lowStockItems.length), label: 'Stock alerts' },
+    { value: String(dashboardSummary?.appointments_today ?? todayAppointments.length), label: 'Appointments today' },
+    { value: String(dashboardSummary?.pending_invoices ?? pendingInvoices.length), label: 'Pending checkouts' },
+    { value: formatCurrency(dashboardSummary?.pending_invoice_amount ?? pendingTotal), label: 'Outstanding invoices' },
+    { value: String(dashboardSummary?.stock_alerts ?? dashboardLowStock.length), label: 'Stock alerts' },
   ];
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
+      {backendError && (
+        <div className="rounded-lg border border-[#F0A500]/20 bg-[#FFF8E8] px-4 py-3 text-sm font-medium text-[#A86F00]">
+          {backendError}
+        </div>
+      )}
+
       {/* Welcome strip */}
       <section className="relative overflow-hidden rounded-xl border border-[#2D1F3D]/20 bg-[#1A1025] px-5 py-5 md:px-6 md:py-6">
         <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#C9A96E]/10 blur-3xl" />
@@ -215,7 +296,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <KPICard
           title="Today's Revenue"
-          value={formatCurrency(8250)}
+          value={formatCurrency(dashboardSummary?.today_revenue ?? 0)}
           change="+12.5%"
           icon={<Banknote size={18} strokeWidth={1.75} />}
           trend="up"
@@ -223,7 +304,7 @@ export default function Dashboard() {
         />
         <KPICard
           title="Total Clients"
-          value="342"
+          value={String(dashboardSummary?.total_clients ?? 0)}
           change="+8 new"
           icon={<Users size={18} strokeWidth={1.75} />}
           trend="up"
@@ -231,15 +312,15 @@ export default function Dashboard() {
         />
         <KPICard
           title="Pending Invoices"
-          value="15"
-          change={formatCurrency(4200)}
+          value={String(dashboardSummary?.pending_invoices ?? 0)}
+          change={formatCurrency(dashboardSummary?.pending_invoice_amount ?? 0)}
           icon={<FileText size={18} strokeWidth={1.75} />}
           trend="neutral"
           accent="warning"
         />
         <KPICard
           title="Products Sold"
-          value="89"
+          value={String(dashboardSummary?.products_sold ?? 0)}
           change="+15.2%"
           icon={<Package size={18} strokeWidth={1.75} />}
           trend="up"
@@ -352,7 +433,7 @@ export default function Dashboard() {
             }
           />
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={revenueData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+            <AreaChart data={dashboardRevenueData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
               <defs>
                 <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#C9A96E" stopOpacity={0.2} />
@@ -395,7 +476,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie
-                  data={topProductsData}
+                  data={dashboardTopProducts}
                   cx="50%"
                   cy="50%"
                   innerRadius={52}
@@ -403,7 +484,7 @@ export default function Dashboard() {
                   paddingAngle={3}
                   dataKey="value"
                   stroke="none">
-                  {topProductsData.map((entry, index) => (
+                  {dashboardTopProducts.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -421,7 +502,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
 
             <div className="w-full flex-1 space-y-2">
-              {topProductsData.map((item) => (
+              {dashboardTopProducts.map((item) => (
                 <div key={item.name} className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
@@ -450,7 +531,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentInvoices.map((invoice) => (
+                {dashboardRecentInvoices.map((invoice) => (
                   <tr key={invoice.id} className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30">
                     <td className="py-2.5 pl-1 pr-2">
                       <span style={{ fontFamily: 'var(--font-mono)' }} className="text-[12px] font-medium text-primary">
@@ -477,12 +558,12 @@ export default function Dashboard() {
             subtitle="Items below minimum threshold"
             action={
               <span className="rounded-md bg-[#F0A500]/10 px-2 py-1 text-[11px] font-medium text-[#A86F00]">
-                {lowStockItems.length} items
+                {dashboardLowStock.length} items
               </span>
             }
           />
           <div className="space-y-3">
-            {lowStockItems.map((item) => {
+            {dashboardLowStock.map((item) => {
               const pct = Math.min((item.current / item.minimum) * 100, 100);
               return (
                 <div key={item.product} className="rounded-lg border border-[#F0A500]/15 bg-[#F0A500]/[0.03] p-3.5">
@@ -689,6 +770,7 @@ function StatusBadge({ status }: { status: string }) {
     Paid: 'bg-[#2ECC8A]/10 text-[#159B61]',
     Pending: 'bg-[#F0A500]/10 text-[#A86F00]',
     Overdue: 'bg-destructive/10 text-destructive',
+    Credit: 'bg-[#F0A500]/10 text-[#A86F00]',
   };
 
   return (
