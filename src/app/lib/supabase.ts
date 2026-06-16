@@ -130,6 +130,22 @@ export async function signInWithPassword(email: string, password: string) {
   return session;
 }
 
+export async function trySignInWithPassword(email: string, password: string): Promise<boolean> {
+  const currentSession = getStoredSupabaseSession();
+  try {
+    await supabaseRequest<SupabaseSession>('/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      token: SUPABASE_ANON_KEY,
+      body: { email: email.trim().toLowerCase(), password },
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    storeSupabaseSession(currentSession);
+  }
+}
+
 export async function sendPasswordResetEmail(email: string, redirectTo: string) {
   assertSupabaseConfig();
 

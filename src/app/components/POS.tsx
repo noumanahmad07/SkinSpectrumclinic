@@ -613,7 +613,7 @@ export default function POS() {
       : `${paymentMethod}`;
 
   const receiptSummary = [
-    'Skin Spectrum Aesthetics',
+    'Skin Spectrum Esthetics',
     `Customer: ${clientName}`,
     `Staff: ${billStaffName || '—'}`,
     `Payment: ${paymentSummary}`,
@@ -680,7 +680,7 @@ export default function POS() {
   };
 
   const handleEmailReceipt = () => {
-    const subject = encodeURIComponent('Skin Spectrum Aesthetics Payment Receipt');
+    const subject = encodeURIComponent('Skin Spectrum Esthetics Payment Receipt');
     const body = encodeURIComponent(receiptSummary);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };

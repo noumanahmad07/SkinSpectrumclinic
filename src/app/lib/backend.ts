@@ -1,4 +1,4 @@
-import { database, hasActiveSupabaseSession, isSupabaseConfigured, signUpStaffUser } from './supabase';
+import { database, getStoredSupabaseSession, hasActiveSupabaseSession, isSupabaseConfigured, signUpStaffUser, trySignInWithPassword } from './supabase';
 import type { Invoice } from './invoices';
 import type {
   BillingSettings,
@@ -608,8 +608,33 @@ export async function saveBackendSecuritySettings(security: SecuritySettings) {
   });
 }
 
-export async function updateBackendStaffProfile(user: UserAccount) {
+export async function getCurrentStaffProfile() {
+  const session = getStoredSupabaseSession();
+  if (!session?.user?.id) return null;
+  const [profile] = await database.select<BackendStaffProfile>(
+    'staff_profiles',
+    `select=*&id=eq.${session.user.id}&limit=1`,
+  );
+  return profile ?? null;
+}
+
+export async function updateBackendStaffProfile(user: UserAccount, newPassword?: string) {
   if (typeof user.id !== 'string') return null;
+
+  const trimmedPassword = newPassword?.trim();
+  if (trimmedPassword && trimmedPassword.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+
+  if (trimmedPassword) {
+    const currentProfile = await getCurrentStaffProfile();
+    if (!currentProfile || currentProfile.role !== 'Admin') {
+      throw new Error(
+        `Password reset requires Admin role. Your account role is "${currentProfile?.role ?? 'unknown'}". In Supabase run fix_promote_admin_role.sql, then log out and sign in again.`,
+      );
+    }
+  }
+
   const [savedProfile] = await database.update<BackendStaffProfile>(
     'staff_profiles',
     `id=eq.${user.id}`,
@@ -618,8 +643,30 @@ export async function updateBackendStaffProfile(user: UserAccount) {
       email: user.email,
       role: user.role,
       status: user.status,
+      ...(trimmedPassword ? { password_changed_at: new Date().toISOString() } : {}),
     },
   );
+
+  if (!savedProfile) {
+    throw new Error(
+      'Could not update this user. Your account needs Admin role in Supabase staff_profiles.',
+    );
+  }
+
+  if (trimmedPassword) {
+    await database.rpcValue<void>('admin_reset_staff_password', {
+      target_user_id: user.id,
+      new_password: trimmedPassword,
+    });
+
+    const loginWorks = await trySignInWithPassword(user.email, trimmedPassword);
+    if (!loginWorks) {
+      throw new Error(
+        'Password was saved but login verification failed. Run the updated fix_admin_reset_staff_password.sql in Supabase SQL Editor, then set the password again.',
+      );
+    }
+  }
+
   return savedProfile;
 }
 

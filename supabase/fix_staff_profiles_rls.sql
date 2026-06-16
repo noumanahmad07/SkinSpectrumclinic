@@ -56,9 +56,10 @@ select
     initcap(replace(split_part(users.email, '@', 1), '.', ' '))
   ) as name,
   lower(users.email) as email,
-  case users.raw_user_meta_data->>'role'
-    when 'Admin' then 'Admin'::public.staff_role
-    when 'Manager' then 'Manager'::public.staff_role
+  case
+    when lower(users.email) = 'admin@skinspectrum.com' then 'Admin'::public.staff_role
+    when users.raw_user_meta_data->>'role' = 'Admin' then 'Admin'::public.staff_role
+    when users.raw_user_meta_data->>'role' = 'Manager' then 'Manager'::public.staff_role
     else 'Staff'::public.staff_role
   end as role,
   'Active'::public.record_status as status,

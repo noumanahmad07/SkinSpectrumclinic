@@ -13,7 +13,7 @@ insert into public.clinic_settings (
   notification_settings,
   security_settings
 ) values (
-  'SkinSpectrum Esthetics',
+  'Skin Spectrum Esthetics',
   '+1 (555) 123-4567',
   'info@skinspectrum.com',
   '123 Beauty Lane, Suite 100

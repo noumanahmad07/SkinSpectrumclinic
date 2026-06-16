@@ -646,8 +646,8 @@ function UserFormModal({
       return;
     }
     setError('');
-    const password = user ? (form.password.trim() || user.password) : form.password;
-    const passwordChangedAt = form.password.trim() || !user ? new Date().toISOString() : user.passwordChangedAt;
+    const newPassword = form.password.trim();
+    const passwordChangedAt = newPassword || !user ? new Date().toISOString() : user.passwordChangedAt;
     try {
       setIsSubmitting(true);
       await onSubmit(
@@ -655,7 +655,7 @@ function UserFormModal({
           ? {
               name: form.name.trim(),
               email: form.email.trim().toLowerCase(),
-              password,
+              password: newPassword,
               passwordChangedAt,
               role: form.role,
               status: form.status,
@@ -664,7 +664,7 @@ function UserFormModal({
           : {
               name: form.name.trim(),
               email: form.email.trim().toLowerCase(),
-              password,
+              password: newPassword,
               passwordChangedAt,
               role: form.role,
               status: form.status,
@@ -842,13 +842,23 @@ function UsersTab({ onSave }: { onSave: (msg: string) => void }) {
       if (!canWriteToBackend()) {
         throw new Error('Sign in with Supabase to update user accounts.');
       }
-      await updateBackendStaffProfile({ ...data, id: data.id });
+      await updateBackendStaffProfile({ ...data, id: data.id }, data.password?.trim() || undefined);
       await reloadUsersFromBackend();
       setEditUser(null);
-      onSave('User updated successfully!');
+      onSave(
+        data.password?.trim()
+          ? 'User updated. They can sign in with the new password.'
+          : 'User updated successfully!',
+      );
       return;
     }
-    persistUsers(users.map((u) => (u.id === data.id ? { ...data, id: data.id } : u)));
+    persistUsers(
+      users.map((u) =>
+        u.id === data.id
+          ? { ...data, id: data.id, password: data.password?.trim() || u.password }
+          : u,
+      ),
+    );
     setEditUser(null);
     onSave('User updated successfully!');
   };

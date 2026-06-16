@@ -576,7 +576,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
   const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const invoiceSummary = [
-    'Skin Spectrum Aesthetics',
+    'Skin Spectrum Esthetics',
     `Invoice: ${invoice.id}`,
     `Client: ${invoice.client}`,
     `Status: ${invoice.status}${invoice.status === 'Credit' ? ` (${formatCurrency(invoice.creditAmount ?? invoice.amount, true)} outstanding)` : ''}`,
@@ -706,7 +706,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
       ctx.drawImage(logo, 60, 30, 90, 90);
       ctx.restore();
     }
-    drawText('Skin Spectrum Aesthetics', 172, 48, { size: 28, weight: '800', color: '#FFFFFF' });
+    drawText('Skin Spectrum Esthetics', 172, 48, { size: 28, weight: '800', color: '#FFFFFF' });
     drawText('PROFESSIONAL INVOICE', 172, 88, { size: 13, weight: '700', color: '#E8C98A' });
     drawText(invoice.id, width - 60, 46, { size: 26, weight: '900', color: '#E8C98A', align: 'right' });
     drawText(invoice.status, width - 60, 84, { size: 14, weight: '700', color: '#FFFFFF', align: 'right' });
@@ -797,7 +797,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
     if (file && navigator.canShare?.({ files: [file] })) {
       await navigator.share({
         files: [file],
-        title: `${invoice.id} - Skin Spectrum Aesthetics`,
+        title: `${invoice.id} - Skin Spectrum Esthetics`,
         text: `Invoice ${invoice.id} for ${invoice.client}`,
       });
     } else {
@@ -813,7 +813,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
   };
 
   const handleEmailInvoice = () => {
-    const subject = `Invoice ${invoice.id} - Skin Spectrum Aesthetics`;
+    const subject = `Invoice ${invoice.id} - Skin Spectrum Esthetics`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(invoiceSummary)}`;
   };
 
@@ -855,7 +855,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div className="min-w-0">
                 <div style={{ fontFamily: 'var(--font-heading)' }} className="text-2xl md:text-3xl font-bold mb-1">
-                  SkinSpectrum
+                  Skin Spectrum Esthetics
                 </div>
                 <div className="text-sm opacity-90">Where Skin Meets Science</div>
               </div>
