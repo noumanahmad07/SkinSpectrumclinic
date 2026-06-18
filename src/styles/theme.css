@@ -1,14 +1,14 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Skin Spectrum Esthetics brand fonts */
+  /* Skin Spectrum Aesthetics brand fonts */
   --font-heading: 'Plus Jakarta Sans', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   --font-size: 16px;
 
-  /* Skin Spectrum Esthetics brand colors */
+  /* Skin Spectrum Aesthetics brand colors */
   --gold: #C9A96E;
   --gold-dark: #A07840;
   --gold-light: #E8C98A;

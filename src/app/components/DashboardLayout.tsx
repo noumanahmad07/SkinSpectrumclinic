@@ -93,11 +93,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {!isCollapsed ? (
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-black/40 ring-1 ring-white/10">
-                <img src={ssaLogo} alt="Skin Spectrum Esthetics" className="h-full w-full object-cover" />
+                <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
               </div>
               <div>
                 <div style={{ fontFamily: 'var(--font-heading)' }} className="text-[15px] font-semibold leading-tight text-[#E8C98A]">
-                  Skin Spectrum Esthetics
+                  Skin Spectrum Aesthetics
                 </div>
                 <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[#F5ECD7]/45">
                   Where Skin Meets Science
@@ -106,7 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           ) : (
             <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-black/40 ring-1 ring-white/10">
-              <img src={ssaLogo} alt="Skin Spectrum Esthetics" className="h-full w-full object-cover" />
+              <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
           )}
         </div>
@@ -220,7 +220,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
-                  Skin Spectrum Esthetics
+                  Skin Spectrum Aesthetics
                 </p>
                 <h1
                   style={{ fontFamily: 'var(--font-heading)' }}

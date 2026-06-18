@@ -93,10 +93,10 @@ export default function ResetPassword() {
             <div>
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-[#1A1025] shadow-md">
-                  <img src={ssaLogo} alt="Skin Spectrum Esthetics" className="h-full w-full object-cover" />
+                  <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07840]">Skin Spectrum Esthetics</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07840]">Skin Spectrum Aesthetics</p>
                   <p className="text-[12px] text-muted-foreground">Staff password reset</p>
                 </div>
               </div>

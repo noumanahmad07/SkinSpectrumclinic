@@ -308,9 +308,9 @@ export default function Reports() {
         <main class="report">
           <header class="header">
             <div class="brand">
-              <img class="logo" src="${ssaLogo}" alt="Skin Spectrum Esthetics" />
+              <img class="logo" src="${ssaLogo}" alt="Skin Spectrum Aesthetics" />
               <div>
-                <h1>Skin Spectrum Esthetics</h1>
+                <h1>Skin Spectrum Aesthetics</h1>
                 <p class="subtitle">${reportTitle}</p>
               </div>
             </div>

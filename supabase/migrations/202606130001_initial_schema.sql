@@ -31,7 +31,7 @@ $$;
 
 create table if not exists public.clinic_settings (
   id uuid primary key default gen_random_uuid(),
-  name text not null default 'Skin Spectrum Esthetics',
+  name text not null default 'Skin Spectrum Aesthetics',
   phone text not null default '',
   email text not null default '',
   address text not null default '',

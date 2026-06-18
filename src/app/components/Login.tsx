@@ -74,11 +74,11 @@ export default function Login() {
             transition={{ duration: 0.5, ease: 'easeOut' }}
             className="flex items-center gap-3.5">
             <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-[#E8C98A]/30 bg-black/60 shadow-[0_8px_32px_rgba(201,169,110,0.2)] ring-1 ring-white/5">
-              <img src={ssaLogo} alt="Skin Spectrum Esthetics" className="h-full w-full object-cover" />
+              <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#E8C98A]">Skin Spectrum Esthetics</p>
-              <p className="text-[13px] text-[#F5ECD7]/50">Clinical esthetics suite</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#E8C98A]">Skin Spectrum Aesthetics</p>
+              <p className="text-[13px] text-[#F5ECD7]/50">Clinical aesthetics suite</p>
             </div>
           </motion.div>
 
@@ -177,10 +177,10 @@ export default function Login() {
             transition={{ duration: 0.4 }}
             className="mb-7 flex items-center gap-3 lg:hidden">
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-[#1A1025] shadow-md">
-              <img src={ssaLogo} alt="Skin Spectrum Esthetics" className="h-full w-full object-cover" />
+              <img src={ssaLogo} alt="Skin Spectrum Aesthetics" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07840]">Skin Spectrum Esthetics</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07840]">Skin Spectrum Aesthetics</p>
               <p className="text-[12px] text-muted-foreground">Staff dashboard</p>
             </div>
           </motion.div>
@@ -208,7 +208,7 @@ export default function Login() {
                     Welcome back
                   </h2>
                   <p className="mt-1.5 text-[13px] text-muted-foreground">
-                    Sign in to continue to Skin Spectrum Esthetics
+                    Sign in to continue to Skin Spectrum Aesthetics
                   </p>
                 </div>
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1A1025] text-[#E8C98A] shadow-[0_4px_16px_rgba(26,16,37,0.2)]">
@@ -331,7 +331,7 @@ export default function Login() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#C9A96E]/40 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C9A96E]" />
             </span>
-            Secure Skin Spectrum Esthetics access
+            Secure Skin Spectrum Aesthetics access
           </motion.p>
         </div>
       </div>

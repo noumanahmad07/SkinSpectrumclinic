@@ -73,7 +73,7 @@ export function isCreditEnabled(billing: BillingSettings = loadSettings().billin
 
 export const defaultSettings: AppSettings = {
   clinic: {
-    name: 'Skin Spectrum Esthetics',
+    name: 'Skin Spectrum Aesthetics',
     phone: '+1 (555) 123-4567',
     email: 'info@skinspectrum.com',
     address: '123 Beauty Lane, Suite 100\nLos Angeles, CA 90028\nUnited States',

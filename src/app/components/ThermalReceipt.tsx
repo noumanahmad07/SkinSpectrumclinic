@@ -101,7 +101,7 @@ export function ThermalReceiptPaper({
       style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' }}>
       <div className="text-center">
         <img src={logoSrc} alt="Logo" className="mx-auto mb-2 h-12 w-12 rounded-full bg-black object-cover" />
-        <div className="text-[11px] font-bold uppercase tracking-[0.08em]">Skin Spectrum Esthetics</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.08em]">Skin Spectrum Aesthetics</div>
         <div className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-[#6B6570]">Payment Receipt</div>
       </div>
 
@@ -181,7 +181,7 @@ export function ThermalReceiptPaper({
       {dashedRule('my-3')}
 
       <p className="text-center text-[9px] leading-relaxed text-[#6B6570]">
-        Thank you for visiting Skin Spectrum Esthetics
+        Thank you for visiting Skin Spectrum Aesthetics
       </p>
       <p className="mt-2 text-center text-[8px] text-[#9A929E]">*** Computer generated receipt ***</p>
     </div>
@@ -252,7 +252,7 @@ export function buildThermalReceiptHtml(data: ThermalReceiptData): string {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Receipt - Skin Spectrum Esthetics</title>
+    <title>Receipt - Skin Spectrum Aesthetics</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       @page {
@@ -320,7 +320,7 @@ export function buildThermalReceiptHtml(data: ThermalReceiptData): string {
     <div class="receipt">
       <div class="center">
         <img class="logo" src="${logoSrc}" alt="Logo" />
-        <div class="brand">Skin Spectrum Esthetics</div>
+        <div class="brand">Skin Spectrum Aesthetics</div>
         <div class="subtitle">Payment Receipt</div>
       </div>
       <div class="rule"></div>
@@ -341,7 +341,7 @@ export function buildThermalReceiptHtml(data: ThermalReceiptData): string {
       ${appliedPaid > 0 ? `<div class="total-row"><span class="label">Paid now</span><span class="value">${esc(formatCurrency(appliedPaid, true))}</span></div>` : ''}
       ${appliedCredit > 0 ? `<div class="total-row"><span class="label">On credit</span><span class="value" style="color:#A86F00">${esc(formatCurrency(appliedCredit, true))}</span></div>` : ''}
       <div class="rule"></div>
-      <div class="footer">Thank you for visiting Skin Spectrum Esthetics</div>
+      <div class="footer">Thank you for visiting Skin Spectrum Aesthetics</div>
       <div class="fine">*** Computer generated receipt ***</div>
     </div>
   </body>
@@ -421,7 +421,7 @@ export function ThermalInvoicePaper({
       style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' }}>
       <div className="text-center">
         <img src={logoSrc} alt="Logo" className="mx-auto mb-2 h-12 w-12 rounded-full bg-black object-cover" />
-        <div className="text-[11px] font-bold uppercase tracking-[0.08em]">Skin Spectrum Esthetics</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.08em]">Skin Spectrum Aesthetics</div>
         <div className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-[#6B6570]">Tax Invoice</div>
       </div>
 
@@ -507,7 +507,7 @@ export function ThermalInvoicePaper({
       {dashedRule('my-3')}
 
       <p className="text-center text-[9px] leading-relaxed text-[#6B6570]">
-        Thank you for visiting Skin Spectrum Esthetics
+        Thank you for visiting Skin Spectrum Aesthetics
       </p>
       <p className="mt-2 text-center text-[8px] text-[#9A929E]">*** Computer generated invoice ***</p>
     </div>
@@ -577,7 +577,7 @@ export function buildThermalInvoiceHtml(data: ThermalInvoiceData): string {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>${esc(invoiceId)} - Skin Spectrum Esthetics</title>
+    <title>${esc(invoiceId)} - Skin Spectrum Aesthetics</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       @page {
@@ -646,7 +646,7 @@ export function buildThermalInvoiceHtml(data: ThermalInvoiceData): string {
     <div class="receipt">
       <div class="center">
         <img class="logo" src="${logoSrc}" alt="Logo" />
-        <div class="brand">Skin Spectrum Esthetics</div>
+        <div class="brand">Skin Spectrum Aesthetics</div>
         <div class="subtitle">Tax Invoice</div>
       </div>
       <div class="rule"></div>
@@ -668,7 +668,7 @@ export function buildThermalInvoiceHtml(data: ThermalInvoiceData): string {
       ${appliedCredit > 0 ? `<div class="total-row"><span class="label">On credit</span><span class="value" style="color:#A86F00">${esc(formatCurrency(appliedCredit, true))}</span></div>` : ''}
       ${status === 'Paid' ? '<div class="paid-stamp">*** PAID ***</div>' : ''}
       <div class="rule"></div>
-      <div class="footer">Thank you for visiting Skin Spectrum Esthetics</div>
+      <div class="footer">Thank you for visiting Skin Spectrum Aesthetics</div>
       <div class="fine">*** Computer generated invoice ***</div>
     </div>
   </body>
