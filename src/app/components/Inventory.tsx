@@ -122,7 +122,7 @@ const initialInventory: Product[] = [
 ];
 
 const productEmojis = ['💧', '✨', '🍊', '🌙', '💆', '💆‍♀️', '🧴', '🎭', '👁️', '☀️', '🎁', '🫧', '🌿', '💎', '🌸'];
-const productCategories = ['Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs', 'Masks', 'Protection', 'Cleansers', 'General'];
+const productCategories = ['Treatments', 'Serums', 'Creams', 'Bundles', 'Scrubs', 'Masks', 'Protection', 'Cleansers', 'Sunblock', 'Shampoo', 'General'];
 
 const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 

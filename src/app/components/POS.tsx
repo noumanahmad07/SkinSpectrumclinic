@@ -87,7 +87,7 @@ const mockProducts: PosProduct[] = [
   { id: 12, name: 'Cleanser Foam', category: 'Cleansers', price: 48, stock: 0, status: 'Inactive' },
 ];
 
-const POS_CATEGORY_ORDER = ['Treatments', 'Serums', 'Creams', 'Cleansers', 'Bundles', 'Scrubs', 'Masks', 'Protection'];
+const POS_CATEGORY_ORDER = ['Treatments', 'Serums', 'Creams', 'Cleansers', 'Bundles', 'Scrubs', 'Masks', 'Protection', 'Sunblock', 'Shampoo'];
 const fallbackClients = ['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'];
 
 const mapBackendPosProduct = (product: BackendPosProduct): PosProduct => ({
