@@ -18,7 +18,7 @@ import {
   patchSettings,
 } from './lib/settings';
 import { canUseBackend, fetchSettingsData, mapBackendSettings, mapStaffProfileToUser, parseSupabaseError, signInStaff } from './lib/backend';
-import { signOutSupabase } from './lib/supabase';
+import { signOutSupabase, SUPABASE_SESSION_EXPIRED_EVENT } from './lib/supabase';
 
 export interface AuthUser {
   name: string;
@@ -61,6 +61,15 @@ export default function App() {
     }
     setUser(null);
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    };
+    window.addEventListener(SUPABASE_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SUPABASE_SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, []);
 
   useEffect(() => {

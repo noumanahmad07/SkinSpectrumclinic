@@ -323,6 +323,9 @@ export function parseSupabaseError(error: unknown): string {
       code?: string;
     };
     const detail = parsed.msg || parsed.message || parsed.error_description || parsed.error;
+    if (parsed.code === 'PGRST303' || detail?.toLowerCase().includes('jwt expired')) {
+      return 'Your Supabase session expired. Please log out and sign in again.';
+    }
     if (detail?.includes('row-level security') || parsed.code === '42501') {
       return 'Permission denied. Log out and sign in with your Supabase staff account.';
     }
@@ -331,6 +334,9 @@ export function parseSupabaseError(error: unknown): string {
     }
     return detail || error.message;
   } catch {
+    if (error.message.toLowerCase().includes('jwt expired') || error.message.includes('PGRST303')) {
+      return 'Your Supabase session expired. Please log out and sign in again.';
+    }
     if (error.message.includes('row-level security') || error.message.includes('42501')) {
       return 'Permission denied. Log out and sign in with your Supabase staff account.';
     }

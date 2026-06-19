@@ -20,19 +20,42 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const SUPABASE_SESSION_KEY = 'skinspectrum_supabase_session';
+export const SUPABASE_SESSION_EXPIRED_EVENT = 'skinspectrum_supabase_session_expired';
+
+type StoredSupabaseSession = SupabaseSession & {
+  expires_at?: number;
+};
+
+let refreshInFlight: Promise<StoredSupabaseSession | null> | null = null;
+
+function notifySessionExpired() {
+  window.dispatchEvent(new Event(SUPABASE_SESSION_EXPIRED_EVENT));
+}
+
+function sessionExpiryMs(session: StoredSupabaseSession): number {
+  if (session.expires_at) return session.expires_at;
+  if (session.expires_in) return Date.now() + session.expires_in * 1000;
+  return 0;
+}
+
+function isJwtExpiredError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('jwt expired') || lower.includes('pgrst303');
+}
 
 export function isSupabaseConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
 export function hasActiveSupabaseSession() {
-  return Boolean(getStoredSupabaseSession()?.access_token);
+  const session = getStoredSupabaseSession();
+  return Boolean(session?.access_token || session?.refresh_token);
 }
 
-export function getStoredSupabaseSession(): SupabaseSession | null {
+export function getStoredSupabaseSession(): StoredSupabaseSession | null {
   try {
     const raw = window.localStorage.getItem(SUPABASE_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as SupabaseSession) : null;
+    return raw ? (JSON.parse(raw) as StoredSupabaseSession) : null;
   } catch {
     return null;
   }
@@ -43,7 +66,57 @@ export function storeSupabaseSession(session: SupabaseSession | null) {
     window.localStorage.removeItem(SUPABASE_SESSION_KEY);
     return;
   }
-  window.localStorage.setItem(SUPABASE_SESSION_KEY, JSON.stringify(session));
+  const stored: StoredSupabaseSession = {
+    ...session,
+    expires_at: Date.now() + session.expires_in * 1000,
+  };
+  window.localStorage.setItem(SUPABASE_SESSION_KEY, JSON.stringify(stored));
+}
+
+async function refreshSupabaseSession(): Promise<StoredSupabaseSession | null> {
+  const current = getStoredSupabaseSession();
+  if (!current?.refresh_token) {
+    storeSupabaseSession(null);
+    notifySessionExpired();
+    return null;
+  }
+
+  try {
+    const refreshed = await supabaseRequest<SupabaseSession>(
+      '/auth/v1/token?grant_type=refresh_token',
+      {
+        method: 'POST',
+        token: SUPABASE_ANON_KEY,
+        body: { refresh_token: current.refresh_token },
+      },
+      { skipAuthRefresh: true },
+    );
+    storeSupabaseSession(refreshed);
+    return getStoredSupabaseSession();
+  } catch {
+    storeSupabaseSession(null);
+    notifySessionExpired();
+    return null;
+  }
+}
+
+async function ensureFreshAccessToken(): Promise<string | null> {
+  const session = getStoredSupabaseSession();
+  if (!session?.access_token) return null;
+
+  const expiresAt = sessionExpiryMs(session);
+  const shouldRefresh = !expiresAt || Date.now() >= expiresAt - 60_000;
+
+  if (!shouldRefresh) return session.access_token;
+
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSupabaseSession().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+
+  const refreshed = await refreshInFlight;
+  return refreshed?.access_token ?? null;
 }
 
 function assertSupabaseConfig() {
@@ -52,10 +125,21 @@ function assertSupabaseConfig() {
   }
 }
 
-async function supabaseRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function supabaseRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+  requestMeta: { skipAuthRefresh?: boolean; retryOnJwtExpired?: boolean } = {},
+): Promise<T> {
   assertSupabaseConfig();
 
-  const token = options.token ?? getStoredSupabaseSession()?.access_token ?? SUPABASE_ANON_KEY!;
+  let token = options.token;
+  if (!token && !requestMeta.skipAuthRefresh) {
+    token = (await ensureFreshAccessToken()) ?? undefined;
+  }
+  if (!token) {
+    token = getStoredSupabaseSession()?.access_token ?? SUPABASE_ANON_KEY!;
+  }
+
   const response = await fetch(`${SUPABASE_URL}${path}`, {
     method: options.method ?? 'GET',
     headers: {
@@ -70,6 +154,17 @@ async function supabaseRequest<T>(path: string, options: RequestOptions = {}): P
 
   if (!response.ok) {
     const message = await response.text();
+    if (
+      !requestMeta.skipAuthRefresh &&
+      requestMeta.retryOnJwtExpired !== false &&
+      isJwtExpiredError(message) &&
+      getStoredSupabaseSession()?.refresh_token
+    ) {
+      const refreshed = await refreshSupabaseSession();
+      if (refreshed?.access_token) {
+        return supabaseRequest<T>(path, options, { skipAuthRefresh: true, retryOnJwtExpired: false });
+      }
+    }
     throw new Error(message || `Supabase request failed: ${response.status}`);
   }
 
@@ -105,7 +200,7 @@ export async function signUpStaffUser(
         password,
         data: metadata,
       },
-    });
+    }, { skipAuthRefresh: true });
 
     const userId = result.user?.id ?? result.id;
     if (!userId) {
@@ -125,7 +220,7 @@ export async function signInWithPassword(email: string, password: string) {
     method: 'POST',
     token: SUPABASE_ANON_KEY,
     body: { email: email.trim().toLowerCase(), password },
-  });
+  }, { skipAuthRefresh: true });
   storeSupabaseSession(session);
   return session;
 }
@@ -137,7 +232,7 @@ export async function trySignInWithPassword(email: string, password: string): Pr
       method: 'POST',
       token: SUPABASE_ANON_KEY,
       body: { email: email.trim().toLowerCase(), password },
-    });
+    }, { skipAuthRefresh: true });
     return true;
   } catch {
     return false;
