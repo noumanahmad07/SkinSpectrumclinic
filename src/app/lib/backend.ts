@@ -260,6 +260,10 @@ export async function updateBackendClient(id: string, client: Partial<BackendCli
   return savedClient;
 }
 
+export async function deleteBackendClient(id: string) {
+  return database.delete('clients', `id=eq.${id}`);
+}
+
 export async function fetchProducts() {
   return database.select<BackendProduct>('products', 'select=*&order=name.asc');
 }

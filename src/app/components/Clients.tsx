@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Search, Plus, X, Phone, Mail, Calendar, Edit, CalendarClock, Eye, Users, Check } from 'lucide-react';
+import { Search, Plus, X, Phone, Mail, Calendar, Edit, CalendarClock, Eye, Users, Check, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   canUseBackend,
   createBackendClient,
+  deleteBackendClient,
   fetchClientPageClients,
   parseSupabaseError,
   updateBackendClient,
@@ -136,6 +137,7 @@ export default function Clients() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editClient, setEditClient] = useState<Client | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Client | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [backendError, setBackendError] = useState('');
 
@@ -212,6 +214,31 @@ export default function Clients() {
       const message = parseSupabaseError(error);
       setBackendError(message);
       throw new Error(message);
+    }
+  };
+
+  const deleteClient = async (client: Client) => {
+    if (!supabaseSessionActive) {
+      setBackendError('Log out and sign in with your Supabase staff account to delete clients.');
+      return;
+    }
+    if (typeof client.id !== 'string') {
+      setBackendError('This client record is invalid. Please refresh and try again.');
+      return;
+    }
+
+    setBackendError('');
+
+    try {
+      await deleteBackendClient(client.id);
+      setClients((prev) => prev.filter((item) => item.id !== client.id));
+      setSelectedClient((current) => (current?.id === client.id ? null : current));
+      setEditClient((current) => (current?.id === client.id ? null : current));
+      setDeleteConfirm(null);
+      setSuccessMessage(`${client.name} has been deleted.`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      setBackendError(parseSupabaseError(error));
     }
   };
 
@@ -352,31 +379,31 @@ export default function Clients() {
           </div>
         ) : (
           <>
-            <div className="hidden h-full overflow-x-hidden overflow-y-auto scroll-area md:block">
-              <table className="w-full table-fixed">
+            <div className="hidden h-full overflow-auto scroll-area md:block">
+              <table className="min-w-[1120px] w-full table-fixed">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b border-border bg-card">
-                    <th className="w-[24%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Client</th>
-                    <th className="w-[13%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Phone</th>
-                    <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin</th>
-                    <th className="w-[14%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Appointment</th>
-                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Last Visit</th>
-                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Spent</th>
-                    <th className="w-[11%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Follow Up</th>
-                    <th className="w-[6%] bg-card px-2 py-2.5" aria-label="Actions" />
+                    <th className="w-[23%] bg-card px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Client</th>
+                    <th className="w-[14%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Phone</th>
+                    <th className="w-[10%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skin</th>
+                    <th className="w-[12%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Appointment</th>
+                    <th className="w-[12%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Last Visit</th>
+                    <th className="w-[12%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Spent</th>
+                    <th className="w-[10%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Follow Up</th>
+                    <th className="w-[7%] bg-card px-4 py-3 text-right" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody className="bg-card">
                   {filteredClients.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-3 py-10 text-center text-[13px] text-muted-foreground">
+                      <td colSpan={8} className="px-3 py-10 text-center text-[13px] text-muted-foreground">
                         No clients yet. Add a client to use them on POS and Billing.
                       </td>
                     </tr>
                   ) : (
                   filteredClients.map((client) => (
                     <tr key={client.id} className="border-b border-border/60 bg-card transition-colors last:border-0 hover:bg-muted/30">
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-3.5">
                         <div className="flex min-w-0 items-center gap-2.5">
                           <ClientAvatar name={client.name} skinType={client.skinType} />
                           <div className="min-w-0">
@@ -390,53 +417,59 @@ export default function Clients() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3.5">
                         <span className="block truncate text-[12px] text-muted-foreground">{client.phone}</span>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3.5">
                         <SkinTypeBadge type={client.skinType} />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3.5">
                         {client.appointmentDate && client.appointmentTime ? (
-                          <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-[#2ECC8A]/10 px-2 py-0.5 text-[11px] font-medium text-[#159B61]">
+                          <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-[#2ECC8A]/10 px-2 py-1 text-[11px] font-medium leading-none text-[#159B61]">
                             <Calendar size={11} strokeWidth={1.75} />
-                            {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            <span className="truncate">{new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                           </span>
                         ) : (
                           <span className="text-[12px] text-muted-foreground/60">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-3">
-                        <span className="text-[12px] font-medium text-foreground">
+                      <td className="px-3 py-3.5">
+                        <span className="whitespace-nowrap text-[12px] font-medium text-foreground">
                           {new Date(client.lastVisit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       </td>
-                      <td className="px-3 py-3">
-                        <span className="text-[12px] font-medium tabular-nums text-primary">{formatCurrency(client.totalSpent)}</span>
+                      <td className="px-3 py-3.5">
+                        <span className="whitespace-nowrap text-[12px] font-medium tabular-nums text-primary">{formatCurrency(client.totalSpent)}</span>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3.5">
                         {client.followUpDate ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary">
+                          <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary px-2 py-1 text-[11px] font-medium leading-none text-primary">
                             <CalendarClock size={11} strokeWidth={1.75} />
-                            {new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            <span className="truncate">{new Date(client.followUpDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                           </span>
                         ) : (
                           <span className="text-[12px] text-muted-foreground/60">—</span>
                         )}
                       </td>
-                      <td className="px-2 py-3">
-                        <div className="flex items-center gap-1">
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setSelectedClient(client)}
-                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                             title="View client">
                             <Eye size={14} strokeWidth={1.75} />
                           </button>
                           <button
                             onClick={() => setEditClient(client)}
-                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             title="Edit client">
                             <Edit size={14} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(client)}
+                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            title="Delete client">
+                            <Trash2 size={14} strokeWidth={1.75} />
                           </button>
                         </div>
                       </td>
@@ -483,6 +516,12 @@ export default function Clients() {
                       className="flex-1 rounded-lg bg-primary py-2 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90">
                       Edit
                     </button>
+                    <button
+                      onClick={() => setDeleteConfirm(client)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-destructive/20 text-destructive transition-colors hover:bg-destructive/10"
+                      title="Delete client">
+                      <Trash2 size={14} strokeWidth={1.75} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -498,7 +537,55 @@ export default function Clients() {
             client={selectedClient}
             onClose={() => setSelectedClient(null)}
             onEdit={() => setEditClient(selectedClient)}
+            onDelete={() => setDeleteConfirm(selectedClient)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Delete Client Confirm */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setDeleteConfirm(null)}>
+            <motion.div
+              initial={{ scale: 0.94, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.94, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                  <Trash2 size={18} strokeWidth={1.75} />
+                </div>
+                <div className="min-w-0">
+                  <h3 style={{ fontFamily: 'var(--font-heading)' }} className="text-base font-semibold text-foreground">
+                    Delete Client?
+                  </h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                    This will permanently remove <span className="font-medium text-foreground">{deleteConfirm.name}</span> from clients.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 rounded-lg border border-border py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteClient(deleteConfirm)}
+                  className="flex-1 rounded-lg bg-destructive py-2.5 text-[13px] font-semibold text-destructive-foreground transition-opacity hover:opacity-90">
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -531,10 +618,11 @@ export default function Clients() {
 }
 
 // Client Detail Panel
-function ClientDetailPanel({ client, onClose, onEdit }: {
+function ClientDetailPanel({ client, onClose, onEdit, onDelete }: {
   client: Client;
   onClose: () => void;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
     <motion.div
@@ -567,6 +655,9 @@ function ClientDetailPanel({ client, onClose, onEdit }: {
         <div className="flex items-center gap-1">
           <button onClick={onEdit} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary">
             <Edit size={16} strokeWidth={1.75} />
+          </button>
+          <button onClick={onDelete} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+            <Trash2 size={16} strokeWidth={1.75} />
           </button>
           <button onClick={onClose} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted">
             <X size={18} />

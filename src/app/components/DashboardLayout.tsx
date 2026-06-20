@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  ShieldAlert,
   LogOut,
   Menu,
   X,
@@ -30,6 +31,8 @@ interface NavItem {
   icon: React.ReactNode;
   section: string;
 }
+
+const INVENTORY_ALERTS_UPDATED_EVENT = 'inventory-alerts-updated';
 
 const navigation: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} strokeWidth={1.75} />, section: 'Main' },
@@ -48,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout } = useAuth();
   const backendSyncEnabled = canUseBackend() && hasActiveSupabaseSession();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [inventoryAlertCounts, setInventoryAlertCounts] = useState({ nearExpiry: 0, expired: 0 });
 
   const refreshUnreadCount = useCallback(async () => {
     if (!backendSyncEnabled) {
@@ -70,6 +74,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated);
   }, [refreshUnreadCount]);
 
+  useEffect(() => {
+    const handleInventoryAlertsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ nearExpiry?: number; expired?: number }>).detail;
+      setInventoryAlertCounts({
+        nearExpiry: detail?.nearExpiry || 0,
+        expired: detail?.expired || 0,
+      });
+    };
+
+    window.addEventListener(INVENTORY_ALERTS_UPDATED_EVENT, handleInventoryAlertsUpdated);
+    return () => window.removeEventListener(INVENTORY_ALERTS_UPDATED_EVENT, handleInventoryAlertsUpdated);
+  }, []);
+
   const groupedNav = navigation.reduce((acc, item) => {
     if (!acc[item.section]) acc[item.section] = [];
     acc[item.section].push(item);
@@ -79,6 +96,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const currentPage = location.pathname === '/notifications'
     ? 'Notifications'
     : navigation.find((n) => n.path === location.pathname)?.label || 'Dashboard';
+  const expiryFilter = new URLSearchParams(location.search).get('expiry');
+  const showInventoryHeaderOptions = location.pathname === '/inventory';
 
   if (user?.mustChangePassword && location.pathname !== '/settings') {
     return <Navigate to="/settings?tab=security" replace />;
@@ -231,6 +250,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
+              {showInventoryHeaderOptions && (
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <Link
+                    to={expiryFilter === 'near' ? '/inventory' : '/inventory?expiry=near'}
+                    className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${
+                      expiryFilter === 'near'
+                        ? 'border-[#F0A500]/30 bg-[#F0A500]/10 text-[#A86F00]'
+                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}>
+                    <ShieldAlert size={14} strokeWidth={1.75} />
+                    <span>Near Expiry</span>
+                    <span className="tabular-nums text-muted-foreground">{inventoryAlertCounts.nearExpiry}</span>
+                  </Link>
+                  <Link
+                    to={expiryFilter === 'expired' ? '/inventory' : '/inventory?expiry=expired'}
+                    className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${
+                      expiryFilter === 'expired'
+                        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}>
+                    <ShieldAlert size={14} strokeWidth={1.75} />
+                    <span>Expiry</span>
+                    <span className="tabular-nums text-muted-foreground">{inventoryAlertCounts.expired}</span>
+                  </Link>
+                </div>
+              )}
+
               <Link
                 to="/notifications"
                 title="Notifications"

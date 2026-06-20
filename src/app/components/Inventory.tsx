@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, AlertTriangle, ShieldAlert, Check, Package } from 'lucide-react';
+import { useLocation } from 'react-router';
+import { Search, Plus, Grid3x3, List, Edit, Trash2, X, Save, Check, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   canUseBackend,
@@ -27,6 +28,13 @@ interface Product {
   status: 'Active' | 'Inactive';
   image: string;
 }
+
+export const INVENTORY_ALERTS_UPDATED_EVENT = 'inventory-alerts-updated';
+
+export type InventoryAlertCounts = {
+  nearExpiry: number;
+  expired: number;
+};
 
 const mapBackendProduct = (product: BackendInventoryProduct | BackendProduct): Product => ({
   id: product.id,
@@ -180,6 +188,7 @@ const getExpiryStatus = (expiry: string) => {
 };
 
 export default function Inventory() {
+  const location = useLocation();
   const backendEnabled = canUseBackend();
   const [inventory, setInventory] = useState<Product[]>(() => (canUseBackend() ? [] : initialInventory));
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -223,17 +232,38 @@ export default function Inventory() {
 
   const categories = Array.from(new Set(inventory.map((item) => item.category)));
 
-  const filteredInventory = inventory.filter(
-    (item) =>
-      (item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.code.toLowerCase().includes(searchQuery.toLowerCase())) &&
-      (!filterCategory || item.category === filterCategory)
-  );
+  const expiryFilter = new URLSearchParams(location.search).get('expiry');
+  const filteredInventory = inventory.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.code.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = !filterCategory || item.category === filterCategory;
+    const expiryStatus = getExpiryStatus(item.expiry).label;
+    const matchesExpiry =
+      expiryFilter === 'near'
+        ? expiryStatus === 'Near Expiry'
+        : expiryFilter === 'expired'
+          ? expiryStatus === 'Expired'
+          : true;
+
+    return matchesSearch && matchesCategory && matchesExpiry;
+  });
   const stockAlerts = inventory.filter((item) => !isUnlimitedStock(item) && item.stock <= item.minStock);
   const expiryAlerts = inventory.filter((item) => {
     const expiryStatus = getExpiryStatus(item.expiry);
     return expiryStatus.label === 'Expired' || expiryStatus.label === 'Near Expiry';
   });
+  const nearExpiryCount = expiryAlerts.filter((item) => getExpiryStatus(item.expiry).label === 'Near Expiry').length;
+  const expiredCount = expiryAlerts.length - nearExpiryCount;
+
+  useEffect(() => {
+    const event = new CustomEvent<InventoryAlertCounts>(INVENTORY_ALERTS_UPDATED_EVENT, {
+      detail: { nearExpiry: nearExpiryCount, expired: expiredCount },
+    });
+    const timer = window.setTimeout(() => window.dispatchEvent(event), 0);
+
+    return () => window.clearTimeout(timer);
+  }, [nearExpiryCount, expiredCount]);
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg);
@@ -439,77 +469,6 @@ export default function Inventory() {
         </div>
       </Panel>
 
-      {/* Compact alerts */}
-      {(stockAlerts.length > 0 || expiryAlerts.length > 0) && (
-        <Panel className="mb-4 shrink-0 divide-y divide-border p-0">
-          {stockAlerts.length > 0 && (
-            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3">
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F0A500]/10 text-[#A86F00]">
-                  <AlertTriangle size={14} strokeWidth={1.75} />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#A86F00]">Stock watch</p>
-                  <p className="text-[10px] text-muted-foreground">{stockAlerts.length} need restock</p>
-                </div>
-                <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-                  {stockAlerts.filter((item) => item.stock === 0).length} out
-                </span>
-                <span className="rounded-full bg-[#F0A500]/10 px-2 py-0.5 text-[10px] font-medium text-[#A86F00]">
-                  {stockAlerts.filter((item) => item.stock > 0).length} low
-                </span>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-                {stockAlerts.map((item) => (
-                  <span
-                    key={item.id}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
-                    <span className="max-w-[8rem] truncate font-medium text-foreground">{item.name}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {item.stock}/{item.minStock}
-                    </span>
-                    <span
-                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                        item.stock === 0 ? 'bg-destructive/10 text-destructive' : 'bg-[#F0A500]/10 text-[#A86F00]'
-                      }`}>
-                      {item.stock === 0 ? 'Out' : 'Low'}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {expiryAlerts.length > 0 && (
-            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3">
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                  <ShieldAlert size={14} strokeWidth={1.75} />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-destructive">Expiry watch</p>
-                  <p className="text-[10px] text-muted-foreground">{expiryAlerts.length} need review</p>
-                </div>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-                {expiryAlerts.map((item) => {
-                  const expiryStatus = getExpiryStatus(item.expiry);
-                  return (
-                    <span
-                      key={item.id}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
-                      <span className="max-w-[8rem] truncate font-medium text-foreground">{item.name}</span>
-                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${expiryBadgeStyles[expiryStatus.label as keyof typeof expiryBadgeStyles] || expiryBadgeStyles['No Expiry']}`}>
-                        {expiryStatus.label}
-                      </span>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </Panel>
-      )}
-
       {/* Products */}
       <Panel className="min-h-0 flex-1 overflow-hidden p-0">
         {filteredInventory.length === 0 ? (
@@ -552,19 +511,19 @@ export default function Inventory() {
             </div>
           </div>
         ) : (
-          <div className="h-full overflow-x-hidden overflow-y-auto scroll-area">
-            <table className="w-full table-fixed">
+          <div className="h-full overflow-auto scroll-area">
+            <table className="min-w-[1180px] w-full table-fixed">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border bg-card">
-                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Code</th>
-                  <th className="w-[20%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Product</th>
-                  <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Category</th>
-                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Cost</th>
-                  <th className="w-[10%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sell</th>
-                  <th className="w-[13%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Stock</th>
-                  <th className="w-[14%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Expiry</th>
-                  <th className="w-[9%] bg-card px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
-                  <th className="w-[6%] bg-card px-2 py-2.5" aria-label="Actions" />
+                  <th className="w-[9%] bg-card px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Code</th>
+                  <th className="w-[21%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Product</th>
+                  <th className="w-[10%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Category</th>
+                  <th className="w-[9%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Cost</th>
+                  <th className="w-[10%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Sell</th>
+                  <th className="w-[12%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Stock</th>
+                  <th className="w-[15%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Expiry</th>
+                  <th className="w-[8%] bg-card px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="w-[6%] bg-card px-4 py-3 text-right" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody className="bg-card">
@@ -573,29 +532,29 @@ export default function Inventory() {
                   const expiryStatus = getExpiryStatus(item.expiry);
                   return (
                     <tr key={item.id} className="border-b border-border/60 bg-card transition-colors last:border-0 hover:bg-muted/30">
-                      <td className="px-3 py-2">
-                        <span style={{ fontFamily: 'var(--font-mono)' }} className="text-[11px] font-medium text-primary">
+                      <td className="px-4 py-2.5">
+                        <span style={{ fontFamily: 'var(--font-mono)' }} className="whitespace-nowrap text-[11px] font-medium text-primary">
                           {item.code}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary text-base">{item.image}</span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-base">{item.image}</span>
                           <span className="truncate text-[13px] font-medium text-foreground">{item.name}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2">
-                        <span className="text-[12px] text-muted-foreground">{item.category}</span>
+                      <td className="px-3 py-2.5">
+                        <span className="block truncate text-[12px] text-muted-foreground">{item.category}</span>
                       </td>
-                      <td className="px-3 py-2">
-                        <span className="text-[12px] tabular-nums text-muted-foreground">{formatCurrency(item.costPrice)}</span>
+                      <td className="px-3 py-2.5">
+                        <span className="whitespace-nowrap text-[12px] tabular-nums text-muted-foreground">{formatCurrency(item.costPrice)}</span>
                       </td>
-                      <td className="px-3 py-2">
-                        <span style={{ fontFamily: 'var(--font-heading)' }} className="text-[12px] font-semibold tabular-nums text-primary">
+                      <td className="px-3 py-2.5">
+                        <span style={{ fontFamily: 'var(--font-heading)' }} className="whitespace-nowrap text-[12px] font-semibold tabular-nums text-primary">
                           {formatCurrency(item.sellPrice)}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className={`shrink-0 text-[12px] font-semibold tabular-nums ${stockToneClasses[stockStatus.tone]}`}>
                             {isUnlimitedStock(item) ? '∞' : item.stock}
@@ -608,9 +567,9 @@ export default function Inventory() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
                             {item.expiry
                               ? new Date(item.expiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                               : '—'}
@@ -623,29 +582,29 @@ export default function Inventory() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <button
                           type="button"
                           onClick={() => toggleStatus(item.id)}
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-medium leading-none ${
                             item.status === 'Active' ? 'bg-[#2ECC8A]/10 text-[#159B61]' : 'bg-muted text-muted-foreground'
                           }`}>
                           {item.status}
                         </button>
                       </td>
-                      <td className="px-2 py-2">
-                        <div className="flex items-center gap-0.5">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
                             onClick={() => setEditProduct(item)}
-                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                             title="Edit">
                             <Edit size={14} strokeWidth={1.75} />
                           </button>
                           <button
                             type="button"
                             onClick={() => setDeleteConfirm(item.id)}
-                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                             title="Delete">
                             <Trash2 size={14} strokeWidth={1.75} />
                           </button>
