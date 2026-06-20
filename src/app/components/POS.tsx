@@ -59,6 +59,13 @@ import {
   type BackendPosClient,
   type BackendPosProduct,
 } from '../lib/backend';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 type PosProduct = {
   id: number | string;
@@ -86,6 +93,8 @@ const mockProducts: PosProduct[] = [
   { id: 11, name: 'Luxury Bundle', category: 'Bundles', price: 450, stock: 15, status: 'Active' },
   { id: 12, name: 'Cleanser Foam', category: 'Cleansers', price: 48, stock: 0, status: 'Inactive' },
 ];
+
+const WALK_IN_CLIENT_VALUE = '__walk_in__';
 
 const POS_CATEGORY_ORDER = ['Treatments', 'Serums', 'Creams', 'Cleansers', 'Bundles', 'Scrubs', 'Masks', 'Protection', 'Sunblock', 'Shampoo'];
 const fallbackClients = ['Emma Wilson', 'Sarah Johnson', 'Michael Brown', 'Jessica Davis'];
@@ -900,11 +909,10 @@ export default function POS() {
         </button>
 
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <select
-            value={backendEnabled ? (selectedClientId || '') : (selectedClient || '')}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (!value) {
+          <Select
+            value={backendEnabled ? (selectedClientId || WALK_IN_CLIENT_VALUE) : (selectedClient || WALK_IN_CLIENT_VALUE)}
+            onValueChange={(value) => {
+              if (value === WALK_IN_CLIENT_VALUE) {
                 setSelectedClient(null);
                 setSelectedClientId(null);
                 return;
@@ -917,28 +925,47 @@ export default function POS() {
               }
               setSelectedClient(value);
               setSelectedClientId(null);
-            }}
-            className="h-8 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15">
-            <option value="">Walk-in Customer</option>
-            {backendEnabled ? (
-              posClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))
-            ) : (
-              <>
-                {selectedClient && !fallbackClients.includes(selectedClient) && (
-                  <option value={selectedClient}>{selectedClient}</option>
-                )}
-                {fallbackClients.map((client) => (
-                  <option key={client} value={client}>
-                    {client}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
+            }}>
+            <SelectTrigger
+              size="sm"
+              aria-label="Customer"
+              className="h-8 rounded-lg border-border bg-background px-2.5 text-[12px] shadow-none hover:border-primary/30 focus-visible:ring-primary/15">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-secondary text-primary">
+                  <UserRound size={12} strokeWidth={1.85} />
+                </span>
+                <SelectValue placeholder="Walk-in Customer" />
+              </span>
+            </SelectTrigger>
+            <SelectContent
+              align="start"
+              sideOffset={6}
+              className="max-h-56 overflow-y-auto rounded-lg border-border bg-card p-1 shadow-xl">
+              <SelectItem value={WALK_IN_CLIENT_VALUE} className="rounded-md py-2 text-[12px]">
+                Walk-in Customer
+              </SelectItem>
+              {backendEnabled ? (
+                posClients.map((client) => (
+                  <SelectItem key={client.id} value={client.id} className="rounded-md py-2 text-[12px]">
+                    {client.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <>
+                  {selectedClient && !fallbackClients.includes(selectedClient) && (
+                    <SelectItem value={selectedClient} className="rounded-md py-2 text-[12px]">
+                      {selectedClient}
+                    </SelectItem>
+                  )}
+                  {fallbackClients.map((client) => (
+                    <SelectItem key={client} value={client} className="rounded-md py-2 text-[12px]">
+                      {client}
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+            </SelectContent>
+          </Select>
           <button
             type="button"
             onClick={openTreatmentModal}

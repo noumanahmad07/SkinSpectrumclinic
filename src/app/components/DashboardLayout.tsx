@@ -51,7 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout } = useAuth();
   const backendSyncEnabled = canUseBackend() && hasActiveSupabaseSession();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [inventoryAlertCounts, setInventoryAlertCounts] = useState({ nearExpiry: 0, expired: 0 });
+  const [inventoryAlertCounts, setInventoryAlertCounts] = useState({ lowStock: 0, nearExpiry: 0, expired: 0 });
 
   const refreshUnreadCount = useCallback(async () => {
     if (!backendSyncEnabled) {
@@ -76,8 +76,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     const handleInventoryAlertsUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ nearExpiry?: number; expired?: number }>).detail;
+      const detail = (event as CustomEvent<{ lowStock?: number; nearExpiry?: number; expired?: number }>).detail;
       setInventoryAlertCounts({
+        lowStock: detail?.lowStock || 0,
         nearExpiry: detail?.nearExpiry || 0,
         expired: detail?.expired || 0,
       });
@@ -97,6 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ? 'Notifications'
     : navigation.find((n) => n.path === location.pathname)?.label || 'Dashboard';
   const expiryFilter = new URLSearchParams(location.search).get('expiry');
+  const stockFilter = new URLSearchParams(location.search).get('stock');
   const showInventoryHeaderOptions = location.pathname === '/inventory';
 
   if (user?.mustChangePassword && location.pathname !== '/settings') {
@@ -252,6 +254,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center gap-2 md:gap-3">
               {showInventoryHeaderOptions && (
                 <div className="hidden items-center gap-1.5 sm:flex">
+                  <Link
+                    to={stockFilter === 'low' ? '/inventory' : '/inventory?stock=low'}
+                    className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${
+                      stockFilter === 'low'
+                        ? 'border-[#F0A500]/30 bg-[#F0A500]/10 text-[#A86F00]'
+                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}>
+                    <Package size={14} strokeWidth={1.75} />
+                    <span>Low Stock</span>
+                    <span className="tabular-nums text-muted-foreground">{inventoryAlertCounts.lowStock}</span>
+                  </Link>
                   <Link
                     to={expiryFilter === 'near' ? '/inventory' : '/inventory?expiry=near'}
                     className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${

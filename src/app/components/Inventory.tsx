@@ -32,6 +32,7 @@ interface Product {
 export const INVENTORY_ALERTS_UPDATED_EVENT = 'inventory-alerts-updated';
 
 export type InventoryAlertCounts = {
+  lowStock: number;
   nearExpiry: number;
   expired: number;
 };
@@ -232,7 +233,9 @@ export default function Inventory() {
 
   const categories = Array.from(new Set(inventory.map((item) => item.category)));
 
-  const expiryFilter = new URLSearchParams(location.search).get('expiry');
+  const searchParams = new URLSearchParams(location.search);
+  const expiryFilter = searchParams.get('expiry');
+  const stockFilter = searchParams.get('stock');
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -245,8 +248,9 @@ export default function Inventory() {
         : expiryFilter === 'expired'
           ? expiryStatus === 'Expired'
           : true;
+    const matchesStock = stockFilter === 'low' ? !isUnlimitedStock(item) && item.stock <= item.minStock : true;
 
-    return matchesSearch && matchesCategory && matchesExpiry;
+    return matchesSearch && matchesCategory && matchesExpiry && matchesStock;
   });
   const stockAlerts = inventory.filter((item) => !isUnlimitedStock(item) && item.stock <= item.minStock);
   const expiryAlerts = inventory.filter((item) => {
@@ -258,12 +262,12 @@ export default function Inventory() {
 
   useEffect(() => {
     const event = new CustomEvent<InventoryAlertCounts>(INVENTORY_ALERTS_UPDATED_EVENT, {
-      detail: { nearExpiry: nearExpiryCount, expired: expiredCount },
+      detail: { lowStock: stockAlerts.length, nearExpiry: nearExpiryCount, expired: expiredCount },
     });
     const timer = window.setTimeout(() => window.dispatchEvent(event), 0);
 
     return () => window.clearTimeout(timer);
-  }, [nearExpiryCount, expiredCount]);
+  }, [stockAlerts.length, nearExpiryCount, expiredCount]);
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg);

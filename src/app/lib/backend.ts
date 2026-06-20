@@ -294,6 +294,13 @@ export async function fetchPosClients() {
   return database.select<BackendPosClient>('pos_clients', 'select=*');
 }
 
+function getLocalDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function signInStaff(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const session = await database.signInWithPassword(normalizedEmail, password);
@@ -414,6 +421,7 @@ export async function markBackendInvoicePaid(id: string) {
 }
 
 export async function fetchDashboardData() {
+  const today = getLocalDateInputValue();
   const [
     summaryRows,
     revenueTrend,
@@ -429,13 +437,18 @@ export async function fetchDashboardData() {
     database.select<DashboardTopProduct>('dashboard_top_products', 'select=*'),
     database.select<DashboardRecentInvoice>('dashboard_recent_invoices', 'select=*'),
     database.select<DashboardLowStock>('dashboard_low_stock', 'select=*'),
-    database.select<BackendClient>('dashboard_today_appointments', 'select=*'),
+    database.select<BackendClient>(
+      'clients',
+      `select=*&appointment_date=eq.${today}&order=appointment_time.asc.nullslast`,
+    ),
     database.select<BackendClient>('dashboard_upcoming_appointments', 'select=*'),
     database.select<BackendClient>('dashboard_due_followups', 'select=*'),
   ]);
 
+  const summary = summaryRows[0] ?? null;
+
   return {
-    summary: summaryRows[0] ?? null,
+    summary: summary ? { ...summary, appointments_today: todayAppointments.length } : null,
     revenueTrend,
     topProducts,
     recentInvoices,

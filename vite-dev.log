@@ -3,9 +3,16 @@
 > vite --host 127.0.0.1 --port 5173
 
 
-  [32m[1mVITE[22m v6.3.5[39m  [2mready in [0m[1m493[22m[2m[0m ms[22m
+  VITE v6.3.5  ready in 607 ms
 
-  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
-[2m8:11:37 pm[22m [36m[1m[vite][22m[39m changed tsconfig file detected: D:/react/POS Billing System Design/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
-[2m9:34:18 pm[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
-[2m9:34:19 pm[22m [36m[1m[vite][22m[39m server restarted.
+  ➜  Local:   http://127.0.0.1:5173/
+8:28:19 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
+8:28:19 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
+8:28:42 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
+8:29:36 pm [vite] (client) ✨ new dependencies optimized: @radix-ui/react-select, clsx, tailwind-merge
+8:29:36 pm [vite] (client) ✨ optimized dependencies changed. reloading
+8:29:55 pm [vite] (client) hmr update /@fs/D:\react\POS Billing System Design\src\app\components\ui\select.tsx, /src/styles/index.css
+8:31:42 pm [vite] (client) hmr update /src/app/components/Inventory.tsx, /src/styles/index.css
+8:31:56 pm [vite] (client) hmr update /src/app/components/DashboardLayout.tsx, /src/styles/index.css
+8:34:42 pm [vite] (client) hmr update /src/app/components/Dashboard.tsx, /src/styles/index.css
+8:34:59 pm [vite] (client) hmr update /src/app/components/Dashboard.tsx, /src/styles/index.css

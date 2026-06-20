@@ -51,6 +51,32 @@ const formatCurrency = (amount: number) => `PKR ${amount.toLocaleString()}`;
 
 const todayDate = () => new Date().toISOString().split('T')[0];
 
+const formatAppointmentDate = (client: Pick<Client, 'appointmentDate' | 'appointmentTime'>) => {
+  if (!client.appointmentDate) return '';
+  return new Date(`${client.appointmentDate}T${client.appointmentTime || '00:00:00'}`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const formatAppointmentDateTime = (client: Pick<Client, 'appointmentDate' | 'appointmentTime'>) => {
+  if (!client.appointmentDate) return '';
+  const appointmentAt = new Date(`${client.appointmentDate}T${client.appointmentTime || '00:00:00'}`);
+  const dateText = appointmentAt.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  if (!client.appointmentTime) return `${dateText} · Any time`;
+  return appointmentAt.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
 const mapBackendClient = (client: BackendClient): Client => ({
   id: client.id,
   name: client.name,
@@ -424,10 +450,10 @@ export default function Clients() {
                         <SkinTypeBadge type={client.skinType} />
                       </td>
                       <td className="px-3 py-3.5">
-                        {client.appointmentDate && client.appointmentTime ? (
+                        {client.appointmentDate ? (
                           <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-[#2ECC8A]/10 px-2 py-1 text-[11px] font-medium leading-none text-[#159B61]">
                             <Calendar size={11} strokeWidth={1.75} />
-                            <span className="truncate">{new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            <span className="truncate">{formatAppointmentDate(client)}</span>
                           </span>
                         ) : (
                           <span className="text-[12px] text-muted-foreground/60">—</span>
@@ -676,16 +702,14 @@ function ClientDetailPanel({ client, onClose, onEdit, onDelete }: {
           </div>
         </div>
 
-        {client.appointmentDate && client.appointmentTime && (
+        {client.appointmentDate && (
           <div className="rounded-lg border border-[#2ECC8A]/20 bg-[#2ECC8A]/[0.04] p-3.5">
             <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
               <Calendar size={15} strokeWidth={1.75} className="text-[#159B61]" />
               Appointment
             </div>
             <p className="mt-1.5 text-[13px] text-muted-foreground">
-              {new Date(`${client.appointmentDate}T${client.appointmentTime}`).toLocaleString('en-US', {
-                year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
-              })}
+              {formatAppointmentDateTime(client)}
             </p>
           </div>
         )}

@@ -51,6 +51,7 @@ interface AppointmentClient {
   appointmentDate?: string;
   appointmentTime?: string;
   appointmentAt: Date;
+  hasAppointmentTime: boolean;
 }
 
 const PRODUCT_COLORS = ['#C9A96E', '#A07840', '#2ECC8A', '#F0A500', '#8F609A'];
@@ -73,15 +74,21 @@ const mapBackendClient = (client: BackendClient): Omit<AppointmentClient, 'appoi
   appointmentTime: client.appointment_time || undefined,
 });
 
-const buildAppointments = (clients: Omit<AppointmentClient, 'appointmentAt'>[]) =>
+const buildAppointments = (clients: Omit<AppointmentClient, 'appointmentAt' | 'hasAppointmentTime'>[]) =>
   clients
-    .filter((client) => client.appointmentDate && client.appointmentTime)
+    .filter((client) => client.appointmentDate)
     .map((client) => ({
       ...client,
-      appointmentAt: new Date(`${client.appointmentDate}T${client.appointmentTime}`),
+      hasAppointmentTime: Boolean(client.appointmentTime),
+      appointmentAt: new Date(`${client.appointmentDate}T${client.appointmentTime || '23:59:59'}`),
     }))
     .filter((client) => !Number.isNaN(client.appointmentAt.getTime()))
     .sort((a, b) => a.appointmentAt.getTime() - b.appointmentAt.getTime());
+
+const formatAppointmentTime = (client: AppointmentClient) =>
+  client.hasAppointmentTime
+    ? client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'Any time';
 
 function computeRevenueChange(revenueTrend: DashboardRevenuePoint[]): string | null {
   if (revenueTrend.length < 2) return null;
@@ -342,7 +349,7 @@ export default function Dashboard() {
                   <div>
                     <div className="text-[13px] font-medium text-foreground">{client.name}</div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                      {formatAppointmentTime(client)} · {client.phone}
                     </div>
                   </div>
                   <ChevronRight size={14} className="text-muted-foreground/40 transition-colors group-hover:text-[#2ECC8A]" />
@@ -373,7 +380,7 @@ export default function Dashboard() {
                 className="group rounded-lg border border-border bg-background px-3.5 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-secondary/40">
                 <div className="text-[13px] font-medium text-foreground">{client.name}</div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {client.appointmentAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {client.phone}
+                  {formatAppointmentTime(client)} · {client.phone}
                 </div>
               </button>
             ))}
@@ -521,16 +528,18 @@ export default function Dashboard() {
 
       {/* Tables row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
-        <Panel>
-          <PanelHeader title="Recent Invoices" subtitle="Latest billing activity" />
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full">
-              <thead>
+        <Panel className="flex h-[390px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 px-5 pt-5">
+            <PanelHeader title="Recent Invoices" subtitle="Latest billing activity" />
+          </div>
+          <div className="-mx-1 min-h-0 flex-1 overflow-auto px-5 pb-5 scroll-area">
+            <table className="w-full min-w-[430px]">
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border">
                   <th className="pb-2.5 pl-1 pr-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Invoice</th>
                   <th className="pb-2.5 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Client</th>
-                  <th className="pb-2.5 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</th>
-                  <th className="pb-2.5 pl-2 pr-1 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="pb-2.5 px-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</th>
+                  <th className="pb-2.5 pl-2 pr-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -542,17 +551,22 @@ export default function Dashboard() {
                   </tr>
                 ) : (
                 dashboardRecentInvoices.map((invoice) => (
-                  <tr key={invoice.id} className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30">
-                    <td className="py-2.5 pl-1 pr-2">
-                      <span style={{ fontFamily: 'var(--font-mono)' }} className="text-[12px] font-medium text-primary">
+                  <tr key={invoice.id} className="border-b border-border/50 last:border-0 transition-colors hover:bg-muted/25">
+                    <td className="py-3 pl-1 pr-2">
+                      <span style={{ fontFamily: 'var(--font-mono)' }} className="inline-flex rounded-md bg-secondary px-2 py-1 text-[12px] font-medium text-primary">
                         {invoice.id}
                       </span>
                     </td>
-                    <td className="py-2.5 px-2 text-[13px] text-foreground">{invoice.client}</td>
-                    <td className="py-2.5 px-2 text-[13px] font-medium tabular-nums text-foreground">
+                    <td className="py-3 px-2">
+                      <div className="truncate text-[13px] font-medium text-foreground">{invoice.client}</div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {new Date(invoice.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </td>
+                    <td className="py-3 px-2 text-right text-[13px] font-semibold tabular-nums text-foreground">
                       {formatCurrency(invoice.amount)}
                     </td>
-                    <td className="py-2.5 pl-2 pr-1">
+                    <td className="py-3 pl-2 pr-1 text-right">
                       <StatusBadge status={invoice.status} />
                     </td>
                   </tr>
@@ -563,34 +577,36 @@ export default function Dashboard() {
           </div>
         </Panel>
 
-        <Panel>
-          <PanelHeader
-            title="Low Stock Alerts"
-            subtitle="Items below minimum threshold"
-            action={
-              <span className="rounded-md bg-[#F0A500]/10 px-2 py-1 text-[11px] font-medium text-[#A86F00]">
-                {dashboardLowStock.length} items
-              </span>
-            }
-          />
-          <div className="space-y-3">
+        <Panel className="flex h-[390px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 px-5 pt-5">
+            <PanelHeader
+              title="Low Stock Alerts"
+              subtitle="Items below minimum threshold"
+              action={
+                <span className="rounded-md bg-[#F0A500]/10 px-2 py-1 text-[11px] font-medium text-[#A86F00]">
+                  {dashboardLowStock.length} items
+                </span>
+              }
+            />
+          </div>
+          <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-5 pb-5 scroll-area">
             {dashboardLowStock.length === 0 ? (
               <div className="py-8 text-center text-[13px] text-muted-foreground">All products are above minimum stock.</div>
             ) : (
             dashboardLowStock.map((item) => {
               const pct = Math.min((item.current / item.minimum) * 100, 100);
               return (
-                <div key={item.product} className="rounded-lg border border-[#F0A500]/15 bg-[#F0A500]/[0.03] p-3.5">
-                  <div className="mb-2.5 flex items-start justify-between gap-2">
-                    <div>
+                <div key={item.product} className="rounded-lg border border-[#F0A500]/18 bg-[#FFF8E8]/45 p-3.5 transition-colors hover:border-[#F0A500]/35 hover:bg-[#FFF8E8]/70">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <div className="text-[13px] font-medium text-foreground">{item.product}</div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">{item.category}</div>
                     </div>
-                    <span className="shrink-0 rounded-md bg-[#F0A500]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#A86F00]">
+                    <span className="shrink-0 rounded-md bg-[#F0A500]/12 px-2 py-1 text-[10px] font-semibold text-[#A86F00]">
                       Low
                     </span>
                   </div>
-                  <div className="mb-2 flex items-center gap-3 text-[12px] text-muted-foreground">
+                  <div className="mb-2.5 flex items-center gap-3 text-[12px] text-muted-foreground">
                     <span>
                       Stock: <strong className="font-medium text-[#F0A500]">{item.current}</strong>
                     </span>
@@ -634,9 +650,11 @@ export default function Dashboard() {
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
+                    ...(selectedAppointment.hasAppointmentTime
+                      ? { hour: 'numeric', minute: '2-digit' }
+                      : {}),
                   })}
+                  {!selectedAppointment.hasAppointmentTime ? ' · Any time' : ''}
                 </p>
               </div>
               <button
