@@ -129,6 +129,7 @@ create table if not exists public.invoice_items (
   name text not null,
   quantity integer not null default 1,
   price numeric(12, 2) not null default 0,
+  discount numeric(5, 2) not null default 0,
   created_at timestamptz not null default now()
 );
 

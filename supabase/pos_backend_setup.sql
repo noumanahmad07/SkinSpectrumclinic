@@ -8,6 +8,9 @@
 alter table public.invoice_items
   add column if not exists product_id uuid references public.products(id) on delete set null;
 
+alter table public.invoice_items
+  add column if not exists discount numeric(5, 2) not null default 0;
+
 create index if not exists invoices_status_idx on public.invoices (status);
 create index if not exists invoices_payment_method_idx on public.invoices (payment_method);
 create index if not exists invoice_items_product_id_idx on public.invoice_items (product_id);

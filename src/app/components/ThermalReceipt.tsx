@@ -1,10 +1,11 @@
 import React from 'react';
 
 export type ThermalReceiptItem = {
-  id: number;
+  id: number | string;
   name: string;
   price: number;
   quantity: number;
+  discount?: number;
 };
 
 export type ThermalReceiptData = {
@@ -51,6 +52,15 @@ function formatThermalLineAmount(amount: number, decimals = true): string {
     minimumFractionDigits: decimals ? 2 : 0,
     maximumFractionDigits: decimals ? 2 : 0,
   });
+}
+
+function getThermalItemDiscountAmount(item: { price: number; quantity: number; discount?: number }) {
+  const discount = Math.min(100, Math.max(0, item.discount ?? 0));
+  return (item.price * item.quantity * discount) / 100;
+}
+
+function getThermalItemLineTotal(item: { price: number; quantity: number; discount?: number }) {
+  return Math.max(0, item.price * item.quantity - getThermalItemDiscountAmount(item));
 }
 
 function dashedRule(className = '') {
@@ -131,9 +141,14 @@ export function ThermalReceiptPaper({
               <span className="flex-1 break-words font-semibold">{item.name}</span>
               <span className="w-7 shrink-0 text-center tabular-nums">{item.quantity}</span>
               <span className="w-[4.5rem] shrink-0 text-right tabular-nums font-semibold">
-                {formatThermalLineAmount(item.price * item.quantity, true)}
+                {formatThermalLineAmount(getThermalItemLineTotal(item), true)}
               </span>
             </div>
+            {(item.discount ?? 0) > 0 && (
+              <div className="mt-0.5 text-right text-[9px] font-semibold text-[#159B61]">
+                {item.discount}% off
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -230,8 +245,9 @@ export function buildThermalReceiptHtml(data: ThermalReceiptData): string {
         <div class="item-row">
           <span class="item-name">${esc(item.name)}</span>
           <span class="qty">${item.quantity}</span>
-          <span class="amt">${esc(formatThermalLineAmount(item.price * item.quantity, true))}</span>
+          <span class="amt">${esc(formatThermalLineAmount(getThermalItemLineTotal(item), true))}</span>
         </div>
+        ${(item.discount ?? 0) > 0 ? `<div class="item-discount">${item.discount}% off</div>` : ''}
       </div>`,
     )
     .join('');
@@ -296,6 +312,7 @@ export function buildThermalReceiptHtml(data: ThermalReceiptData): string {
       .item-name { flex: 1; font-weight: 700; word-break: break-word; }
       .qty { width: 24px; text-align: center; flex-shrink: 0; }
       .amt { width: 68px; text-align: right; flex-shrink: 0; font-weight: 700; }
+      .item-discount { margin-top: 2px; text-align: right; font-size: 9px; font-weight: 700; color: #159B61; }
       .total-row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; font-size: 10px; }
       .total-row .label { color: #6B6570; }
       .total-row .value { font-weight: 700; }
@@ -352,6 +369,7 @@ export type ThermalInvoiceItem = {
   name: string;
   quantity: number;
   price: number;
+  discount?: number;
 };
 
 export type ThermalInvoiceData = {
@@ -451,9 +469,14 @@ export function ThermalInvoicePaper({
               <span className="flex-1 break-words font-semibold">{item.name}</span>
               <span className="w-7 shrink-0 text-center tabular-nums">{item.quantity}</span>
               <span className="w-[4.5rem] shrink-0 text-right tabular-nums font-semibold">
-                {formatThermalLineAmount(item.price * item.quantity, true)}
+                {formatThermalLineAmount(getThermalItemLineTotal(item), true)}
               </span>
             </div>
+            {(item.discount ?? 0) > 0 && (
+              <div className="mt-0.5 text-right text-[9px] font-semibold text-[#159B61]">
+                {item.discount}% off
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -565,8 +588,9 @@ export function buildThermalInvoiceHtml(data: ThermalInvoiceData): string {
         <div class="item-row">
           <span class="item-name">${esc(item.name)}</span>
           <span class="qty">${item.quantity}</span>
-          <span class="amt">${esc(formatThermalLineAmount(item.price * item.quantity, true))}</span>
+          <span class="amt">${esc(formatThermalLineAmount(getThermalItemLineTotal(item), true))}</span>
         </div>
+        ${(item.discount ?? 0) > 0 ? `<div class="item-discount">${item.discount}% off</div>` : ''}
       </div>`,
     )
     .join('');
@@ -621,6 +645,7 @@ export function buildThermalInvoiceHtml(data: ThermalInvoiceData): string {
       .item-name { flex: 1; font-weight: 700; word-break: break-word; }
       .qty { width: 24px; text-align: center; flex-shrink: 0; }
       .amt { width: 68px; text-align: right; flex-shrink: 0; font-weight: 700; }
+      .item-discount { margin-top: 2px; text-align: right; font-size: 9px; font-weight: 700; color: #159B61; }
       .total-row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; font-size: 10px; }
       .total-row .label { color: #6B6570; }
       .total-row .value { font-weight: 700; }

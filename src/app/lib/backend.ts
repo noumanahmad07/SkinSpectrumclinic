@@ -103,6 +103,7 @@ export type BackendInvoiceItem = {
   name: string;
   quantity: number;
   price: number;
+  discount: number;
 };
 
 export type BackendInvoiceWithItems = BackendInvoice & {
@@ -941,6 +942,7 @@ export async function saveInvoiceToBackend(invoice: Invoice) {
     name: item.name,
     quantity: item.quantity,
     price: item.price,
+    discount: item.discount ?? 0,
   })));
 
   return savedInvoice;

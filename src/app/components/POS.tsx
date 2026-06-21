@@ -176,6 +176,7 @@ interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  discount?: number;
 }
 
 type PosDraft = {
@@ -520,6 +521,10 @@ export default function POS() {
     active?.scrollIntoView({ block: 'nearest' });
   }, [selectedProductIndex, showProductModal, filteredProducts.length]);
 
+  const sanitizeDiscount = (value: number) => Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
+  const getItemDiscountAmount = (item: CartItem) => (item.price * item.quantity * sanitizeDiscount(item.discount ?? 0)) / 100;
+  const getItemLineTotal = (item: CartItem) => Math.max(0, item.price * item.quantity - getItemDiscountAmount(item));
+
   const addToCart = (product: PosProduct) => {
     if (isPosProductUnavailable(product)) return;
     const existing = cart.find((item) => item.id === product.id);
@@ -530,7 +535,7 @@ export default function POS() {
           : item
       ));
     } else {
-      setCart([...cart, { id: product.id, productId: product.productId, name: product.name, price: product.price, quantity: 1 }]);
+      setCart([...cart, { id: product.id, productId: product.productId, name: product.name, price: product.price, quantity: 1, discount: 0 }]);
     }
   };
 
@@ -579,14 +584,25 @@ export default function POS() {
     }));
   };
 
+  const updateItemDiscount = (id: number | string, value: string) => {
+    const parsed = value === '' ? 0 : parseFloat(value);
+    setCart(cart.map((item) => (
+      item.id === id ? { ...item, discount: sanitizeDiscount(parsed) } : item
+    )));
+  };
+
   const removeFromCart = (id: number | string) => {
     setCart(cart.filter((item) => item.id !== id));
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discountAmount = discount ? (subtotal * parseFloat(discount)) / 100 : 0;
-  const taxAmount = includeTax ? (subtotal - discountAmount) * taxRateDecimal : 0;
-  const total = subtotal - discountAmount + taxAmount;
+  const itemDiscountAmount = cart.reduce((sum, item) => sum + getItemDiscountAmount(item), 0);
+  const billDiscountPercent = sanitizeDiscount(discount ? parseFloat(discount) : 0);
+  const orderDiscountAmount = ((subtotal - itemDiscountAmount) * billDiscountPercent) / 100;
+  const discountAmount = itemDiscountAmount + orderDiscountAmount;
+  const discountedSubtotal = subtotal - discountAmount;
+  const taxAmount = includeTax ? discountedSubtotal * taxRateDecimal : 0;
+  const total = discountedSubtotal + taxAmount;
   const appliedCredit = creditEnabled
     ? Math.min(Math.max(0, parseFloat(creditAmount) || 0), total)
     : 0;
@@ -628,7 +644,7 @@ export default function POS() {
     `Payment: ${paymentSummary}`,
     `Date: ${receiptDate}`,
     '',
-    ...cart.map((item) => `${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity, true)}`),
+    ...cart.map((item) => `${item.name} x${item.quantity}${(item.discount ?? 0) > 0 ? ` (${item.discount}% off)` : ''} - ${formatCurrency(getItemLineTotal(item), true)}`),
     '',
     `Subtotal: ${formatCurrency(subtotal, true)}`,
     discountAmount > 0 ? `Discount: -${formatCurrency(discountAmount, true)}` : '',
@@ -737,6 +753,7 @@ export default function POS() {
         name: item.name,
         quantity: item.quantity,
         price: item.price,
+        discount: item.discount ?? 0,
       })),
       subtotal,
       discount: discountAmount,
@@ -877,6 +894,7 @@ export default function POS() {
         name: treatmentName.trim(),
         price,
         quantity: 1,
+        discount: 0,
       },
     ]);
     setTreatmentName('');
@@ -986,7 +1004,7 @@ export default function POS() {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="grid grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                className="grid grid-cols-[minmax(0,1fr)_7rem_4.75rem_minmax(6rem,auto)_auto] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
                 <div className="min-w-0 justify-self-start">
                   <div className="truncate text-[12px] font-medium text-foreground md:text-[13px]">{item.name}</div>
                 </div>
@@ -1003,16 +1021,31 @@ export default function POS() {
                     <Plus size={12} strokeWidth={2} />
                   </button>
                 </div>
-                <div className="flex items-center justify-end gap-2 justify-self-end">
-                  <div className="text-right text-[12px] font-medium tabular-nums text-foreground md:text-[13px]">
-                    {formatCurrency(item.price * item.quantity, true)}
-                  </div>
-                  <button
-                    onClick={() => removeFromCart(item.id)}
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
-                    <Trash2 size={14} strokeWidth={1.75} />
-                  </button>
+                <div className="flex h-7 items-center gap-1 justify-self-center rounded-md border border-border bg-card px-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={item.discount ?? 0}
+                    onChange={(e) => updateItemDiscount(item.id, e.target.value)}
+                    className="h-5 w-8 bg-transparent text-right text-[11px] font-medium tabular-nums text-foreground outline-none"
+                    aria-label={`${item.name} discount percentage`}
+                  />
+                  <span className="text-[10px] text-muted-foreground">%</span>
                 </div>
+                <div className="justify-self-end text-right text-[12px] font-medium tabular-nums text-foreground md:text-[13px]">
+                    {formatCurrency(getItemLineTotal(item), true)}
+                    {(item.discount ?? 0) > 0 && (
+                      <div className="text-[9px] font-medium text-[#159B61]">
+                        -{formatCurrency(getItemDiscountAmount(item), true)}
+                      </div>
+                    )}
+                </div>
+                <button
+                  onClick={() => removeFromCart(item.id)}
+                  className="justify-self-end rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                  <Trash2 size={14} strokeWidth={1.75} />
+                </button>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -1038,7 +1071,7 @@ export default function POS() {
             {/* Disc · Credit · Tax — boxed row */}
             <div className={`grid gap-1.5 ${creditEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <div className="rounded-lg border border-border bg-background px-2 py-1.5">
-                <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Disc</div>
+                <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Bill Disc</div>
                 <input
                   type="number"
                   placeholder="%"
@@ -1049,7 +1082,7 @@ export default function POS() {
                   className="h-6 w-full rounded-md border border-border bg-card px-2 text-[11px] tabular-nums focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
                 />
                 <div className={`mt-1 text-[9px] font-medium tabular-nums ${discountAmount > 0 ? 'text-[#159B61]' : 'text-muted-foreground'}`}>
-                  {discountAmount > 0 ? `-${formatCurrency(discountAmount, true)}` : formatCurrency(0, true)}
+                  {orderDiscountAmount > 0 ? `-${formatCurrency(orderDiscountAmount, true)}` : formatCurrency(0, true)}
                 </div>
               </div>
 
@@ -1565,13 +1598,18 @@ export default function POS() {
                   <div className="col-span-2 text-right">Price</div>
                   <div className="col-span-2 text-right">Total</div>
                 </div>
-                {cart.map((item) => (
+                  {cart.map((item) => (
                   <div key={item.id} className="grid grid-cols-12 border-t border-border/60 px-4 py-2.5 text-[13px]">
                     <div className="col-span-6 font-medium text-foreground">{item.name}</div>
                     <div className="col-span-2 text-center tabular-nums text-muted-foreground">{item.quantity}</div>
                     <div className="col-span-2 text-right tabular-nums text-muted-foreground">{formatCurrency(item.price)}</div>
                     <div className="col-span-2 text-right font-medium tabular-nums text-foreground">
-                      {formatCurrency(item.price * item.quantity, true)}
+                      {formatCurrency(getItemLineTotal(item), true)}
+                      {(item.discount ?? 0) > 0 && (
+                        <div className="text-[10px] font-medium text-[#159B61]">
+                          {item.discount}% off
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1582,9 +1620,14 @@ export default function POS() {
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span><span className="tabular-nums">{formatCurrency(subtotal, true)}</span>
                   </div>
+                  {itemDiscountAmount > 0 && (
+                    <div className="flex justify-between text-[#159B61]">
+                      <span>Item Discounts</span><span className="tabular-nums">-{formatCurrency(itemDiscountAmount, true)}</span>
+                    </div>
+                  )}
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-[#159B61]">
-                      <span>Discount</span><span className="tabular-nums">-{formatCurrency(discountAmount, true)}</span>
+                      <span>Total Discount</span><span className="tabular-nums">-{formatCurrency(discountAmount, true)}</span>
                     </div>
                   )}
                   {includeTax && (

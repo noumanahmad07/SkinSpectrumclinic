@@ -102,6 +102,12 @@ const formatCurrency = (amount: number, decimals = false) =>
     maximumFractionDigits: decimals ? 2 : 0,
   })}`;
 
+const getInvoiceItemDiscountAmount = (item: { price: number; quantity: number; discount?: number }) =>
+  (item.price * item.quantity * Math.min(100, Math.max(0, item.discount ?? 0))) / 100;
+
+const getInvoiceItemLineTotal = (item: { price: number; quantity: number; discount?: number }) =>
+  Math.max(0, item.price * item.quantity - getInvoiceItemDiscountAmount(item));
+
 const statusStyles: Record<string, string> = {
   Paid: 'bg-[#2ECC8A]/10 text-[#159B61]',
   Credit: 'bg-[#F0A500]/10 text-[#A86F00]',
@@ -141,6 +147,7 @@ const mapBackendInvoice = (invoice: BackendInvoiceWithItems): Invoice => ({
     name: item.name,
     quantity: item.quantity,
     price: Number(item.price || 0),
+    discount: Number(item.discount || 0),
   })),
   subtotal: Number(invoice.subtotal || 0),
   discount: Number(invoice.discount || 0),
@@ -584,7 +591,7 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
     `Due Date: ${formattedDueDate}`,
     '',
     'Items:',
-    ...invoice.items.map((item) => `${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity, true)}`),
+    ...invoice.items.map((item) => `${item.name} x${item.quantity}${(item.discount ?? 0) > 0 ? ` (${item.discount}% off)` : ''} - ${formatCurrency(getInvoiceItemLineTotal(item), true)}`),
     '',
     `Subtotal: ${formatCurrency(invoice.subtotal, true)}`,
     invoice.discount > 0 ? `Discount: -${formatCurrency(invoice.discount, true)}` : '',
@@ -732,7 +739,10 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
       drawText(item.name, 84, y + 16, { size: 16, weight: '700' });
       drawText(String(item.quantity), 540, y + 16, { size: 15, weight: '600', color: '#6B6570', align: 'center' });
       drawText(formatCurrency(item.price), 685, y + 16, { size: 15, weight: '600', color: '#6B6570', align: 'right' });
-      drawText(formatCurrency(item.price * item.quantity, true), 815, y + 16, { size: 15, weight: '800', align: 'right' });
+      drawText(formatCurrency(getInvoiceItemLineTotal(item), true), 815, y + 16, { size: 15, weight: '800', align: 'right' });
+      if ((item.discount ?? 0) > 0) {
+        drawText(`${item.discount}% off`, 815, y + 34, { size: 11, weight: '700', color: '#2ECC8A', align: 'right' });
+      }
     });
     drawLine(tableTop + 48 + invoice.items.length * itemHeight);
 
@@ -908,7 +918,12 @@ function InvoiceDetailModal({ invoice, onClose, onMarkPaid }: {
                 <div className="col-span-2 text-center text-xs md:text-sm text-[#6B6570]">{item.quantity}</div>
                 <div className="col-span-2 text-right text-xs md:text-sm text-[#6B6570]">{formatCurrency(item.price)}</div>
                 <div className="col-span-2 text-right text-xs md:text-sm font-semibold text-[#1A1025]">
-                  {formatCurrency(item.price * item.quantity, true)}
+                  {formatCurrency(getInvoiceItemLineTotal(item), true)}
+                  {(item.discount ?? 0) > 0 && (
+                    <div className="text-[10px] font-semibold text-[#2ECC8A]">
+                      {item.discount}% off
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

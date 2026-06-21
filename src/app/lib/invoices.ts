@@ -9,6 +9,7 @@ export interface InvoiceItem {
   name: string;
   quantity: number;
   price: number;
+  discount?: number;
 }
 
 export type InvoiceStatus = 'Paid' | 'Credit';

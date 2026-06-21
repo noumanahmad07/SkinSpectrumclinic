@@ -3,16 +3,6 @@
 > vite --host 127.0.0.1 --port 5173
 
 
-  VITE v6.3.5  ready in 607 ms
+  VITE v6.3.5  ready in 747 ms
 
   ➜  Local:   http://127.0.0.1:5173/
-8:28:19 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
-8:28:19 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
-8:28:42 pm [vite] (client) hmr update /src/app/components/POS.tsx, /src/styles/index.css
-8:29:36 pm [vite] (client) ✨ new dependencies optimized: @radix-ui/react-select, clsx, tailwind-merge
-8:29:36 pm [vite] (client) ✨ optimized dependencies changed. reloading
-8:29:55 pm [vite] (client) hmr update /@fs/D:\react\POS Billing System Design\src\app\components\ui\select.tsx, /src/styles/index.css
-8:31:42 pm [vite] (client) hmr update /src/app/components/Inventory.tsx, /src/styles/index.css
-8:31:56 pm [vite] (client) hmr update /src/app/components/DashboardLayout.tsx, /src/styles/index.css
-8:34:42 pm [vite] (client) hmr update /src/app/components/Dashboard.tsx, /src/styles/index.css
-8:34:59 pm [vite] (client) hmr update /src/app/components/Dashboard.tsx, /src/styles/index.css
