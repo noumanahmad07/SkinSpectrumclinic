@@ -67,7 +67,7 @@ export function appendInvoice(invoice: Invoice) {
   saveInvoices([invoice, ...existing]);
 }
 
-export function createNextInvoiceId(existing: Invoice[]): string {
+export function createNextInvoiceId(existing: Array<{ id: string }>): string {
   const prefix = INVOICE_ID_PREFIX;
   const nums = existing.map((inv) => {
     const suffix = inv.id.startsWith(`${prefix}-`) ? inv.id.slice(prefix.length + 1) : inv.id.split('-').pop() ?? '0';
@@ -79,6 +79,7 @@ export function createNextInvoiceId(existing: Invoice[]): string {
 }
 
 export function buildPosInvoice(params: {
+  id?: string;
   client: string;
   clientId?: string;
   paymentMethod: string | null;
@@ -90,7 +91,7 @@ export function buildPosInvoice(params: {
   total: number;
 }): Invoice {
   const existing = loadInvoices([]);
-  const id = createNextInvoiceId(existing);
+  const id = params.id ?? createNextInvoiceId(existing);
   const today = new Date();
   const due = new Date(today);
   due.setDate(due.getDate() + INVOICE_DUE_DAYS);

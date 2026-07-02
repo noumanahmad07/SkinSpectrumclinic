@@ -11,6 +11,9 @@ alter table public.invoice_items
 alter table public.invoice_items
   add column if not exists discount numeric(5, 2) not null default 0;
 
+grant select, insert, update, delete on public.invoices to authenticated;
+grant select, insert, update, delete on public.invoice_items to authenticated;
+
 create index if not exists invoices_status_idx on public.invoices (status);
 create index if not exists invoices_payment_method_idx on public.invoices (payment_method);
 create index if not exists invoice_items_product_id_idx on public.invoice_items (product_id);
@@ -81,3 +84,5 @@ begin
     and unit <> 'Service';
 end;
 $$;
+
+notify pgrst, 'reload schema';

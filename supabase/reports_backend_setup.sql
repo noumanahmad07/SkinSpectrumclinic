@@ -8,13 +8,13 @@
 -- 6) supabase/billing_backend_setup.sql
 -- 7) supabase/inventory_backend_setup.sql
 --
--- Reports views use security_invoker = false so staff can read aggregates without RLS recursion issues.
+-- Reports views use security_invoker = true so staff aggregate reads respect RLS.
 
 alter table public.invoice_items
   add column if not exists product_id uuid references public.products(id) on delete set null;
 
 create or replace view public.reports_summary
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   coalesce(sum(total), 0)::numeric(12, 2) as total_revenue,
@@ -28,7 +28,7 @@ from public.invoices
 where invoice_date >= current_date - interval '30 days';
 
 create or replace view public.reports_revenue_today
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   to_char(hours.hour_value, 'HH12 AM') as date,
@@ -46,7 +46,7 @@ group by hours.hour_value
 order by hours.hour_value;
 
 create or replace view public.reports_revenue_week
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   to_char(days.day, 'Dy') as date,
@@ -57,7 +57,7 @@ group by days.day
 order by days.day;
 
 create or replace view public.reports_revenue_month
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   to_char(days.day, 'Mon DD') as date,
@@ -74,7 +74,7 @@ group by days.day
 order by days.day;
 
 create or replace view public.reports_revenue_custom
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   to_char(months.month_value, 'Mon YYYY') as date,
@@ -91,7 +91,7 @@ group by months.month_value
 order by months.month_value;
 
 create or replace view public.reports_category_sales
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   coalesce(prod.category, 'Others') as category,
@@ -105,7 +105,7 @@ order by sales desc
 limit 8;
 
 create or replace view public.reports_client_growth
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   to_char(months.month_value, 'Mon') as month,
@@ -122,7 +122,7 @@ from generate_series(
 order by months.month_value;
 
 create or replace view public.reports_payment_methods
-with (security_invoker = false)
+with (security_invoker = true)
 as
 with method_totals as (
   select
@@ -145,7 +145,7 @@ where grand_total.total_amount is not null
 order by amount desc;
 
 create or replace view public.reports_top_products
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   ii.name as product,
@@ -159,7 +159,7 @@ order by revenue desc
 limit 5;
 
 create or replace view public.reports_top_clients
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   c.name as client,
@@ -171,13 +171,24 @@ group by c.id, c.name, c.total_spent
 order by c.total_spent desc
 limit 5;
 
-grant select on public.reports_summary to anon, authenticated;
-grant select on public.reports_revenue_today to anon, authenticated;
-grant select on public.reports_revenue_week to anon, authenticated;
-grant select on public.reports_revenue_month to anon, authenticated;
-grant select on public.reports_revenue_custom to anon, authenticated;
-grant select on public.reports_category_sales to anon, authenticated;
-grant select on public.reports_client_growth to anon, authenticated;
-grant select on public.reports_payment_methods to anon, authenticated;
-grant select on public.reports_top_products to anon, authenticated;
-grant select on public.reports_top_clients to anon, authenticated;
+revoke all on public.reports_summary from anon;
+grant select on public.reports_summary to authenticated;
+revoke all on public.reports_revenue_today from anon;
+grant select on public.reports_revenue_today to authenticated;
+revoke all on public.reports_revenue_week from anon;
+grant select on public.reports_revenue_week to authenticated;
+revoke all on public.reports_revenue_month from anon;
+grant select on public.reports_revenue_month to authenticated;
+revoke all on public.reports_revenue_custom from anon;
+grant select on public.reports_revenue_custom to authenticated;
+revoke all on public.reports_category_sales from anon;
+grant select on public.reports_category_sales to authenticated;
+revoke all on public.reports_client_growth from anon;
+grant select on public.reports_client_growth to authenticated;
+revoke all on public.reports_payment_methods from anon;
+grant select on public.reports_payment_methods to authenticated;
+revoke all on public.reports_top_products from anon;
+grant select on public.reports_top_products to authenticated;
+revoke all on public.reports_top_clients from anon;
+grant select on public.reports_top_clients to authenticated;
+

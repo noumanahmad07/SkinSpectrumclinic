@@ -50,9 +50,11 @@ import {
   canWriteToBackend,
   decreaseBackendProductStock,
   fetchSettingsData,
+  getNextBackendInvoiceId,
   fetchPosClients,
   fetchPosProducts,
   mapBackendSettings,
+  parseSupabaseError,
   saveInvoiceToBackend,
   updateBackendClientAfterSale,
   verifyBackendBillPerson,
@@ -134,6 +136,7 @@ const categoryIcons: Record<string, LucideIcon> = {
 };
 
 type PaymentMethod = PosPaymentMethod | null;
+type BillAction = 'save' | 'print' | 'whatsapp';
 
 const PAYMENT_ICONS: Record<PosPaymentMethod, LucideIcon> = {
   Cash: Banknote,
@@ -261,7 +264,7 @@ function StaffAuthModal({
   onClose,
   onSuccess,
 }: {
-  action: 'save' | 'print';
+  action: BillAction;
   onClose: () => void;
   onSuccess: (staffName: string) => void;
 }) {
@@ -325,7 +328,11 @@ function StaffAuthModal({
               Staff authorization
             </h3>
             <p className="mt-1 text-[12px] text-muted-foreground">
-              {action === 'save' ? 'Enter bill password to save this invoice.' : 'Enter bill password to print this invoice.'}
+              {action === 'print'
+                ? 'Enter bill password to print this invoice.'
+                : action === 'whatsapp'
+                ? 'Enter bill password to save and send this invoice.'
+                : 'Enter bill password to save this invoice.'}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">
@@ -368,7 +375,94 @@ function StaffAuthModal({
               Cancel
             </button>
             <button type="submit" className="h-9 flex-1 rounded-lg bg-primary text-[13px] font-semibold text-primary-foreground hover:opacity-90">
-              {action === 'save' ? 'Save Bill' : 'Print Bill'}
+              {action === 'print' ? 'Print Bill' : action === 'whatsapp' ? 'Send Bill' : 'Save Bill'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function WhatsAppNumberModal({
+  initialPhone,
+  onClose,
+  onSend,
+}: {
+  initialPhone: string;
+  onClose: () => void;
+  onSend: (phone: string) => void;
+}) {
+  const [phone, setPhone] = useState(initialPhone);
+  const [error, setError] = useState('');
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = phone.trim();
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 8) {
+      setError('Enter a valid WhatsApp number.');
+      return;
+    }
+    onSend(trimmed);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[65] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm"
+      onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 12 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 style={{ fontFamily: 'var(--font-heading)' }} className="text-[15px] font-semibold text-foreground">
+              Send bill on WhatsApp
+            </h3>
+            <p className="mt-1 text-[12px] text-muted-foreground">
+              Enter the customer WhatsApp number.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {error}
+            </div>
+          )}
+          <div>
+            <label htmlFor="whatsapp-phone" className="mb-1.5 block text-[12px] font-medium text-foreground">
+              WhatsApp number
+            </label>
+            <input
+              id="whatsapp-phone"
+              type="tel"
+              value={phone}
+              onChange={(event) => {
+                setPhone(event.target.value);
+                if (error) setError('');
+              }}
+              placeholder="e.g. 923001234567"
+              autoFocus
+              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[13px] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="h-9 flex-1 rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted">
+              Cancel
+            </button>
+            <button type="submit" className="h-9 flex-1 rounded-lg bg-primary text-[13px] font-semibold text-primary-foreground hover:opacity-90">
+              Send
             </button>
           </div>
         </form>
@@ -419,12 +513,17 @@ export default function POS() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [billStaffName, setBillStaffName] = useState<string | null>(null);
-  const [staffAuthModal, setStaffAuthModal] = useState<{ action: 'save' | 'print' } | null>(null);
+  const [staffAuthModal, setStaffAuthModal] = useState<{ action: BillAction } | null>(null);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppNumber, setWhatsAppNumber] = useState('');
   const productSearchRef = useRef<HTMLInputElement>(null);
   const productListRef = useRef<HTMLDivElement>(null);
   const printAfterSaveRef = useRef(false);
+  const pendingWhatsAppNumberRef = useRef('');
+  const pendingWhatsAppWindowRef = useRef<Window | null>(null);
   const keyboardHandlersRef = useRef({
-    requestStaffAuth: (_action: 'save' | 'print') => {},
+    requestStaffAuth: (_action: BillAction) => {},
+    requestWhatsAppBill: () => {},
     printReceiptDocument: () => {},
     showReceipt: false,
     showPrintPreview: false,
@@ -654,6 +753,46 @@ export default function POS() {
     appliedCredit > 0 ? `On Credit: ${formatCurrency(appliedCredit, true)}` : '',
   ].filter(Boolean).join('\n');
 
+  const buildReceiptSummaryForStaff = (staffName: string | null) => [
+    'Skin Spectrum Aesthetics',
+    `Customer: ${clientName}`,
+    `Staff: ${staffName || '—'}`,
+    `Payment: ${paymentSummary}`,
+    `Date: ${receiptDate}`,
+    '',
+    ...cart.map((item) => `${item.name} x${item.quantity}${(item.discount ?? 0) > 0 ? ` (${item.discount}% off)` : ''} - ${formatCurrency(getItemLineTotal(item), true)}`),
+    '',
+    `Subtotal: ${formatCurrency(subtotal, true)}`,
+    discountAmount > 0 ? `Discount: -${formatCurrency(discountAmount, true)}` : '',
+    includeTax ? `Tax: ${formatCurrency(taxAmount, true)}` : '',
+    `Grand Total: ${formatCurrency(total, true)}`,
+    paidAmount > 0 ? `Paid Now: ${formatCurrency(paidAmount, true)}` : '',
+    appliedCredit > 0 ? `On Credit: ${formatCurrency(appliedCredit, true)}` : '',
+  ].filter(Boolean).join('\n');
+
+  const normalizeWhatsAppNumber = (phone: string) => {
+    let digits = phone.trim().replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.startsWith('0')) digits = `92${digits.slice(1)}`;
+    return digits;
+  };
+
+  const openWhatsAppMessage = (phone: string, message: string) => {
+    const normalizedPhone = normalizeWhatsAppNumber(phone);
+    if (normalizedPhone.length < 8) {
+      setAlertMessage('Enter a valid WhatsApp number.');
+      return false;
+    }
+    const url = `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
+    if (pendingWhatsAppWindowRef.current && !pendingWhatsAppWindowRef.current.closed) {
+      pendingWhatsAppWindowRef.current.location.href = url;
+    } else {
+      window.open(url, '_blank');
+    }
+    pendingWhatsAppWindowRef.current = null;
+    return true;
+  };
+
   const handlePrintReceipt = () => {
     setShowPrintPreview(true);
   };
@@ -701,7 +840,7 @@ export default function POS() {
   };
 
   const handleWhatsAppReceipt = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(receiptSummary)}`, '_blank');
+    window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(receiptSummary)}`, '_blank');
   };
 
   const handleEmailReceipt = () => {
@@ -741,9 +880,34 @@ export default function POS() {
     return true;
   };
 
-  const executeBillAction = async (action: 'save' | 'print', staffName: string) => {
+  const executeBillAction = async (action: BillAction, staffName: string) => {
     setBillStaffName(staffName);
+    let invoiceId: string | undefined;
+
+    if (backendEnabled && !backendWritable) {
+      if (action === 'whatsapp' && pendingWhatsAppWindowRef.current && !pendingWhatsAppWindowRef.current.closed) {
+        pendingWhatsAppWindowRef.current.close();
+        pendingWhatsAppWindowRef.current = null;
+      }
+      setAlertMessage('Saving bills requires a Supabase Auth login. Sign in with your Supabase staff account.');
+      return;
+    }
+
+    if (backendEnabled) {
+      try {
+        invoiceId = await getNextBackendInvoiceId();
+      } catch (error) {
+        if (action === 'whatsapp' && pendingWhatsAppWindowRef.current && !pendingWhatsAppWindowRef.current.closed) {
+          pendingWhatsAppWindowRef.current.close();
+          pendingWhatsAppWindowRef.current = null;
+        }
+        setAlertMessage(`Could not prepare a Supabase invoice number. ${parseSupabaseError(error)}`);
+        return;
+      }
+    }
+
     const invoice = buildPosInvoice({
+      id: invoiceId,
       client: clientName,
       clientId: selectedClientId ?? undefined,
       paymentMethod: paidAmount > 0 ? paymentMethod : null,
@@ -761,11 +925,6 @@ export default function POS() {
       total,
     });
 
-    if (backendEnabled && !backendWritable) {
-      setAlertMessage('Saving bills requires a Supabase Auth login. Sign in with your Supabase staff account.');
-      return;
-    }
-
     if (backendEnabled) {
       try {
         await saveInvoiceToBackend(invoice);
@@ -780,12 +939,25 @@ export default function POS() {
           if (!soldItem || product.unit === 'Service') return product;
           return { ...product, stock: Math.max(0, product.stock - soldItem.quantity) };
         }));
-      } catch {
-        setAlertMessage('Bill was not saved to Supabase. Please check POS backend setup.');
+      } catch (error) {
+        if (action === 'whatsapp' && pendingWhatsAppWindowRef.current && !pendingWhatsAppWindowRef.current.closed) {
+          pendingWhatsAppWindowRef.current.close();
+          pendingWhatsAppWindowRef.current = null;
+        }
+        setAlertMessage(`Bill was not saved to Supabase. ${parseSupabaseError(error)}`);
         return;
       }
     } else {
       appendInvoice(invoice);
+    }
+
+    if (action === 'whatsapp') {
+      const targetPhone = pendingWhatsAppNumberRef.current;
+      pendingWhatsAppNumberRef.current = '';
+      if (openWhatsAppMessage(targetPhone, buildReceiptSummaryForStaff(staffName))) {
+        setShowReceipt(true);
+      }
+      return;
     }
 
     if (action === 'save') {
@@ -796,7 +968,7 @@ export default function POS() {
     setShowReceipt(true);
   };
 
-  const requestStaffAuth = (action: 'save' | 'print') => {
+  const requestStaffAuth = (action: BillAction) => {
     if (action === 'save' && showReceipt) return;
     if (action === 'print' && (showReceipt || showPrintPreview)) {
       printReceiptDocument();
@@ -806,8 +978,30 @@ export default function POS() {
     setStaffAuthModal({ action });
   };
 
+  const requestWhatsAppBill = () => {
+    if (showReceipt) {
+      setAlertMessage('Start a new sale before sending another bill.');
+      return;
+    }
+    if (!validateBeforeBill()) return;
+    const selectedClientPhone = selectedClientId
+      ? posClients.find((client) => client.id === selectedClientId)?.phone ?? ''
+      : '';
+    setWhatsAppNumber(selectedClientPhone);
+    setShowWhatsAppModal(true);
+  };
+
+  const handleWhatsAppModalSend = (phone: string) => {
+    pendingWhatsAppNumberRef.current = phone;
+    pendingWhatsAppWindowRef.current = window.open('about:blank', '_blank');
+    setWhatsAppNumber(phone);
+    setShowWhatsAppModal(false);
+    requestStaffAuth('whatsapp');
+  };
+
   keyboardHandlersRef.current = {
     requestStaffAuth,
+    requestWhatsAppBill,
     printReceiptDocument,
     showReceipt,
     showPrintPreview,
@@ -828,17 +1022,27 @@ export default function POS() {
   useEffect(() => {
     const handleKeyDown = (event: Event) => {
       const e = event as globalThis.KeyboardEvent;
+      const key = e.key.toLowerCase();
+
+      if (e.altKey && key === 'w') {
+        e.preventDefault();
+        e.stopPropagation();
+        keyboardHandlersRef.current.requestWhatsAppBill();
+        return;
+      }
+
       if (!(e.ctrlKey || e.metaKey)) return;
 
-      const key = e.key.toLowerCase();
       if (key === 's') {
         e.preventDefault();
+        e.stopPropagation();
         keyboardHandlersRef.current.requestStaffAuth('save');
         return;
       }
 
       if (key === 'p') {
         e.preventDefault();
+        e.stopPropagation();
         const { showReceipt: receiptOpen, showPrintPreview: previewOpen } = keyboardHandlersRef.current;
 
         if (receiptOpen || previewOpen) {
@@ -846,11 +1050,18 @@ export default function POS() {
           return;
         }
         keyboardHandlersRef.current.requestStaffAuth('print');
+        return;
+      }
+
+      if (key === 'w') {
+        e.preventDefault();
+        e.stopPropagation();
+        keyboardHandlersRef.current.requestWhatsAppBill();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, []);
 
   const resetSale = () => {
@@ -1523,13 +1734,37 @@ export default function POS() {
         )}
       </AnimatePresence>
 
+      {/* WhatsApp number modal */}
+      <AnimatePresence>
+        {showWhatsAppModal && (
+          <WhatsAppNumberModal
+            initialPhone={whatsAppNumber}
+            onClose={() => {
+              setShowWhatsAppModal(false);
+              pendingWhatsAppNumberRef.current = '';
+              pendingWhatsAppWindowRef.current = null;
+            }}
+            onSend={handleWhatsAppModalSend}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Staff bill authorization */}
       <AnimatePresence>
         {staffAuthModal && (
           <StaffAuthModal
             key={staffAuthModal.action}
             action={staffAuthModal.action}
-            onClose={() => setStaffAuthModal(null)}
+            onClose={() => {
+              setStaffAuthModal(null);
+              if (staffAuthModal.action === 'whatsapp') {
+                pendingWhatsAppNumberRef.current = '';
+                if (pendingWhatsAppWindowRef.current && !pendingWhatsAppWindowRef.current.closed) {
+                  pendingWhatsAppWindowRef.current.close();
+                }
+                pendingWhatsAppWindowRef.current = null;
+              }
+            }}
             onSuccess={(staffName) => {
               const action = staffAuthModal.action;
               setStaffAuthModal(null);

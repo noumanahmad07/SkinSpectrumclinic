@@ -1,5 +1,5 @@
 import { database, getStoredSupabaseSession, hasActiveSupabaseSession, isSupabaseConfigured, signUpStaffUser, trySignInWithPassword } from './supabase';
-import type { Invoice } from './invoices';
+import { createNextInvoiceId, type Invoice } from './invoices';
 import type {
   BillingSettings,
   ClinicSettings,
@@ -401,6 +401,11 @@ export async function fetchInvoices() {
     'invoices',
     'select=*,invoice_items(*)&order=invoice_date.desc',
   );
+}
+
+export async function getNextBackendInvoiceId() {
+  const rows = await database.select<{ id: string }>('invoices', 'select=id');
+  return createNextInvoiceId(rows);
 }
 
 export async function markBackendInvoicePaid(id: string) {

@@ -1,5 +1,5 @@
 -- Fix Notifications page backend (run in Supabase SQL Editor)
--- Same as notifications_backend_setup.sql with dismissals table, security_invoker = false, and grants.
+-- Same as notifications_backend_setup.sql with dismissals table, security_invoker = true, and authenticated grants.
 
 delete from public.notifications where category = 'System';
 
@@ -40,13 +40,14 @@ begin
 end;
 $$;
 
+revoke all on function public.dismiss_notification(text) from public;
 grant execute on function public.dismiss_notification(text) to authenticated;
 
 create index if not exists notifications_category_idx on public.notifications (category);
 create index if not exists notifications_created_at_idx on public.notifications (created_at desc);
 
 create or replace view public.notifications_center
-with (security_invoker = false)
+with (security_invoker = true)
 as
 select
   id::text as id,
@@ -108,5 +109,7 @@ from public.invoices
 where status = 'Credit'
 order by created_at desc;
 
-grant select on public.notifications_center to anon, authenticated;
+revoke all on public.notifications_center from anon;
+grant select on public.notifications_center to authenticated;
 grant select, insert, update, delete on public.notification_dismissals to authenticated;
+
